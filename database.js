@@ -200,7 +200,8 @@ const loginAttemptsDb = {
 // Logs operations
 const logsDb = {
     createOrUpdate: (logData) => {
-        const { id, sessionId, ip, country, date, dataSummary, pcData } = logData;
+        try {
+            const { id, sessionId, ip, country, date, dataSummary, pcData } = logData;
         
         // Check if log exists by session_id
         let existingLog = null;

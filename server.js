@@ -341,7 +341,7 @@ app.post('/api/upload', (req, res) => {
             historyEntries: totalHistoryEntries,
             processes: pcData?.runningProcesses?.length || 0,
             installedApps: pcData?.installedApps?.length || 0,
-            cookies: transformedBrowserCookies.length || 0,
+            cookies: transformedBrowserCookies.length || 0
         };
 
         const logData = {
@@ -369,7 +369,11 @@ app.post('/api/upload', (req, res) => {
         res.status(200).send('Log received and saved');
     } catch (error) {
         console.error("Error processing uploaded log:", error);
-        res.status(500).send('Error processing log');
+        console.error("Error stack:", error.stack);
+        res.status(500).json({ 
+            message: 'Error processing log',
+            error: error.message 
+        });
     }
 });
 
