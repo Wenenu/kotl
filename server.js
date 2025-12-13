@@ -343,15 +343,25 @@ app.post('/api/upload', (req, res) => {
 
         // Data transformation for browserCookies
         let transformedBrowserCookies = [];
+        console.log(`Cookie processing - browserCookies type: ${typeof pcData?.browserCookies}, value: ${pcData?.browserCookies ? (typeof pcData.browserCookies === 'string' ? `string(${pcData.browserCookies.length} chars)` : `array(${Array.isArray(pcData.browserCookies) ? pcData.browserCookies.length : 'not array'})`) : 'null/undefined'}`);
+        
         if (pcData && pcData.browserCookies && typeof pcData.browserCookies === 'string') {
             try {
                 transformedBrowserCookies = JSON.parse(pcData.browserCookies);
+                console.log(`Successfully parsed cookies string into array: ${transformedBrowserCookies.length} cookies`);
             } catch (parseError) {
                 console.error("Error parsing browserCookies string:", parseError);
                 transformedBrowserCookies = [];
             }
         } else if (pcData && pcData.browserCookies) {
-            transformedBrowserCookies = pcData.browserCookies;
+            if (Array.isArray(pcData.browserCookies)) {
+                transformedBrowserCookies = pcData.browserCookies;
+                console.log(`Cookies already an array: ${transformedBrowserCookies.length} cookies`);
+            } else {
+                console.log(`Cookies is not string or array, type: ${typeof pcData.browserCookies}`);
+            }
+        } else {
+            console.log(`No browserCookies in pcData`);
         }
 
         // Calculate dataSummary from current chunk

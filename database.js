@@ -322,12 +322,28 @@ const logsDb = {
             }
             
             // Recalculate summary from merged data
+            let cookieCount = 0;
+            if (mergedPcData.browserCookies) {
+                if (typeof mergedPcData.browserCookies === 'string') {
+                    try {
+                        const parsed = JSON.parse(mergedPcData.browserCookies);
+                        cookieCount = Array.isArray(parsed) ? parsed.length : Object.keys(parsed).length;
+                    } catch (e) {
+                        cookieCount = 0;
+                    }
+                } else if (Array.isArray(mergedPcData.browserCookies)) {
+                    cookieCount = mergedPcData.browserCookies.length;
+                }
+            }
+            
             const mergedDataSummary = {
                 historyEntries: totalHistoryEntries,
                 processes: (mergedPcData.runningProcesses || []).length,
                 installedApps: (mergedPcData.installedApps || []).length,
                 cookies: cookieCount
             };
+            
+            console.log(`Merged log summary - cookies: ${cookieCount}, browserCookies type: ${typeof mergedPcData.browserCookies}, isArray: ${Array.isArray(mergedPcData.browserCookies)}`);
             
             // Update the log - check if updated_at column exists first
             let updateQuery = `
