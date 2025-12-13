@@ -35,17 +35,8 @@ function App() {
 
     useEffect(() => {
         const token = localStorage.getItem('authToken');
-        // Check if token exists and is a valid JWT (not just "true" from old version)
-        // Allow login page to show if token is invalid
-        if (token && token !== 'true' && token.length > 20) {
+        if (token) {
             setIsLoggedIn(true);
-        } else {
-            // Clear invalid token but don't prevent login
-            if (token && token === 'true') {
-                localStorage.removeItem('authToken');
-                localStorage.removeItem('userInfo');
-            }
-            setIsLoggedIn(false);
         }
     }, []);
 
@@ -69,14 +60,13 @@ function App() {
         };
     }, []);
 
-    const handleLogin = () => {
-        localStorage.setItem('authToken', 'true');
+    const handleLogin = (token) => {
+        // Token is already stored in localStorage by Login component
         setIsLoggedIn(true);
     };
 
     const handleLogout = () => {
         localStorage.removeItem('authToken');
-        localStorage.removeItem('userInfo');
         setIsLoggedIn(false);
     };
 

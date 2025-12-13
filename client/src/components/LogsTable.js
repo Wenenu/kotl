@@ -57,18 +57,17 @@ function LogsTable() {
                 }
             });
             
+            // Handle authentication errors
             if (response.status === 401 || response.status === 403) {
-                // Token expired or invalid - clear it
+                // Token expired or invalid - clear it and reload to show login
                 localStorage.removeItem('authToken');
                 localStorage.removeItem('userInfo');
-                // Reload page to show login screen
                 window.location.reload();
                 return;
             }
             
             if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Server responded with status: ${response.status} - ${errorText}`);
+                throw new Error(`Server responded with status: ${response.status} - ${await response.text()}`);
             }
             
             const jsonData = await response.json();
