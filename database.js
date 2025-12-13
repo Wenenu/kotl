@@ -383,15 +383,27 @@ const logsDb = {
         return this.createOrUpdate(logData);
     },
     
-    getAll: () => {
-        const logs = db.prepare('SELECT * FROM logs ORDER BY date DESC').all();
+    getAll: (username = null) => {
+        let query = 'SELECT * FROM logs';
+        let params = [];
+        
+        // Filter by user if username is provided
+        if (username) {
+            query += ' WHERE user = ?';
+            params.push(username);
+        }
+        
+        query += ' ORDER BY date DESC';
+        
+        const logs = db.prepare(query).all(...params);
         return logs.map(log => ({
             id: log.id,
             ip: log.ip,
             country: log.country,
             date: log.date,
             dataSummary: JSON.parse(log.data_summary || '{}'),
-            pcData: JSON.parse(log.pc_data || '{}')
+            pcData: JSON.parse(log.pc_data || '{}'),
+            user: log.user || null
         }));
     },
     
