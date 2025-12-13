@@ -56,7 +56,6 @@ const initDatabase = () => {
             date DATETIME,
             data_summary TEXT,
             pc_data TEXT,
-            user TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
@@ -90,9 +89,10 @@ const initDatabase = () => {
         console.error('Error checking database schema:', error.message);
     }
     
-    // Create index for session_id for faster lookups (after migration)
+    // Create indexes for faster lookups (after migration)
     db.exec(`
         CREATE INDEX IF NOT EXISTS idx_logs_session_id ON logs(session_id);
+        CREATE INDEX IF NOT EXISTS idx_logs_user ON logs(user);
     `);
 
     // Create indexes for better performance
@@ -206,8 +206,6 @@ const logsDb = {
     createOrUpdate: (logData) => {
         try {
             const { id, sessionId, ip, country, date, dataSummary, pcData, user } = logData;
-            // Extract user from pcData if not provided directly
-            const logUser = user || pcData?.user || null;
             
             // Check if log exists by session_id
             let existingLog = null;
@@ -324,15 +322,14 @@ const logsDb = {
             // Update the log - check if updated_at column exists first
             let updateQuery = `
                 UPDATE logs 
-                SET ip = ?, country = ?, date = ?, data_summary = ?, pc_data = ?, user = ?
+                SET ip = ?, country = ?, date = ?, data_summary = ?, pc_data = ?
             `;
             const updateParams = [
                 ip || existingLog.ip,
                 country || existingLog.country,
                 date || existingLog.date,
                 JSON.stringify(mergedDataSummary),
-                JSON.stringify(mergedPcData),
-                logUser || existingLog.user || null
+                JSON.stringify(mergedPcData)
             ];
             
             // Check if updated_at column exists
@@ -355,20 +352,55 @@ const logsDb = {
             
             return existingLog.id;
         } else {
-            // Create new log
-                db.prepare(`
-                    INSERT INTO logs (id, session_id, ip, country, date, data_summary, pc_data, user)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                `).run(
-                    id,
-                    sessionId,
-                    ip,
-                    country,
-                    date,
-                    JSON.stringify(dataSummary),
-                    JSON.stringify(pcData),
-                    logUser
-                );
+                    // Create new log - check if user column exists
+                    try {
+                        const columns = db.prepare("PRAGMA table_info(logs)").all();
+                        const columnNames = columns.map(col => col.name);
+                        const hasUser = columnNames.includes('user');
+                        
+                        if (hasUser) {
+                            db.prepare(`
+                                INSERT INTO logs (id, session_id, ip, country, date, data_summary, pc_data, user)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            `).run(
+                                id,
+                                sessionId,
+                                ip,
+                                country,
+                                date,
+                                JSON.stringify(dataSummary),
+                                JSON.stringify(pcData),
+                                user || null
+                            );
+                        } else {
+                            db.prepare(`
+                                INSERT INTO logs (id, session_id, ip, country, date, data_summary, pc_data)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                            `).run(
+                                id,
+                                sessionId,
+                                ip,
+                                country,
+                                date,
+                                JSON.stringify(dataSummary),
+                                JSON.stringify(pcData)
+                            );
+                        }
+                    } catch (e) {
+                        // Fallback
+                        db.prepare(`
+                            INSERT INTO logs (id, session_id, ip, country, date, data_summary, pc_data)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        `).run(
+                            id,
+                            sessionId,
+                            ip,
+                            country,
+                            date,
+                            JSON.stringify(dataSummary),
+                            JSON.stringify(pcData)
+                        );
+                    }
             return id;
             }
         } catch (error) {
@@ -383,27 +415,15 @@ const logsDb = {
         return this.createOrUpdate(logData);
     },
     
-    getAll: (username = null) => {
-        let query = 'SELECT * FROM logs';
-        let params = [];
-        
-        // Filter by user if username is provided
-        if (username) {
-            query += ' WHERE user = ?';
-            params.push(username);
-        }
-        
-        query += ' ORDER BY date DESC';
-        
-        const logs = db.prepare(query).all(...params);
+    getAll: () => {
+        const logs = db.prepare('SELECT * FROM logs ORDER BY date DESC').all();
         return logs.map(log => ({
             id: log.id,
             ip: log.ip,
             country: log.country,
             date: log.date,
             dataSummary: JSON.parse(log.data_summary || '{}'),
-            pcData: JSON.parse(log.pc_data || '{}'),
-            user: log.user || null
+            pcData: JSON.parse(log.pc_data || '{}')
         }));
     },
     
