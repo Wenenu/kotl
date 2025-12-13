@@ -44,14 +44,32 @@ function LogsTable() {
     const fetchLogs = useCallback(async () => {
         try {
             const token = localStorage.getItem('authToken');
+            
+            // Check if token exists
+            if (!token) {
+                setError('Not authenticated. Please log in again.');
+                return;
+            }
+            
             const response = await fetch('/api/logs', {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
             });
-            if (!response.ok) {
-                throw new Error(`Server responded with status: ${response.status} - ${await response.text()}`);
+            
+            if (response.status === 401 || response.status === 403) {
+                // Token expired or invalid - clear it and show error
+                localStorage.removeItem('authToken');
+                localStorage.removeItem('userInfo');
+                setError('Session expired. Please refresh the page and log in again.');
+                return;
             }
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Server responded with status: ${response.status} - ${errorText}`);
+            }
+            
             const jsonData = await response.json();
             setLogs(jsonData);
             setError(null);
