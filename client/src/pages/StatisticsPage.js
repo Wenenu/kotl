@@ -107,7 +107,7 @@ function StatisticsPage() {
     return (
         <Box sx={{ p: 3 }}>
             <Typography variant="h4" sx={{ color: '#4ade80', mb: 3, fontWeight: 700 }}>
-                Statistics
+                Global Statistics
             </Typography>
 
             {/* Summary Cards */}
