@@ -536,16 +536,16 @@ const LogDetailPage = () => {
                     overflow: 'hidden',
                 }}
             >
-                <Table size="small">
+                <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.5, px: 1 } }}>
                     <TableHead>
                         <TableRow>
-                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Host</TableCell>
-                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Name</TableCell>
-                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Path</TableCell>
-                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Value</TableCell>
-                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Expires</TableCell>
-                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Secure</TableCell>
-                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>HttpOnly</TableCell>
+                            <TableCell sx={{ color: '#4ade80', fontWeight: 600, py: 1 }}>Host</TableCell>
+                            <TableCell sx={{ color: '#4ade80', fontWeight: 600, py: 1 }}>Name</TableCell>
+                            <TableCell sx={{ color: '#4ade80', fontWeight: 600, py: 1 }}>Path</TableCell>
+                            <TableCell sx={{ color: '#4ade80', fontWeight: 600, py: 1 }}>Value</TableCell>
+                            <TableCell sx={{ color: '#4ade80', fontWeight: 600, py: 1 }}>Expires</TableCell>
+                            <TableCell sx={{ color: '#4ade80', fontWeight: 600, py: 1 }}>Secure</TableCell>
+                            <TableCell sx={{ color: '#4ade80', fontWeight: 600, py: 1 }}>HttpOnly</TableCell>
                         </TableRow>
                     </TableHead>
                     <TableBody>
@@ -563,25 +563,45 @@ const LogDetailPage = () => {
                                     opacity: cookie.expirationInfo.isExpired ? 0.7 : 1,
                                     '&:hover': {
                                         backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                                    },
+                                    '& .MuiTableCell-root': {
+                                        py: 0.5,
+                                        lineHeight: 1.3,
                                     }
                                 }}>
-                                    <TableCell sx={{ color: '#e2e8f0', wordBreak: 'break-all' }}>
-                                        {cookie.host || cookie.domain || 'N/A'}
-                                        {cookie.browser && <Chip label={cookie.browser} size="small" sx={{ ml: 1, height: '18px', fontSize: '0.65rem', backgroundColor: '#334155', color: '#94a3b8' }} />}
+                                    <TableCell sx={{ color: '#e2e8f0', wordBreak: 'break-all', maxHeight: '40px', overflow: 'hidden' }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                                            <span>{cookie.host || cookie.domain || 'N/A'}</span>
+                                            {cookie.browser && <Chip label={cookie.browser} size="small" sx={{ height: '16px', fontSize: '0.6rem', backgroundColor: '#334155', color: '#94a3b8' }} />}
+                                        </Box>
                                     </TableCell>
-                                    <TableCell sx={{ color: '#e2e8f0' }}>{cookie.name || 'N/A'}</TableCell>
-                                    <TableCell sx={{ color: '#94a3b8' }}>{cookie.path || 'N/A'}</TableCell>
-                                    <TableCell sx={{ color: '#94a3b8', wordBreak: 'break-all', maxWidth: '300px' }}>{cookie.value || 'N/A'}</TableCell>
+                                    <TableCell sx={{ color: '#e2e8f0', maxHeight: '40px', overflow: 'hidden' }}>{cookie.name || 'N/A'}</TableCell>
+                                    <TableCell sx={{ color: '#94a3b8', maxHeight: '40px', overflow: 'hidden' }}>{cookie.path || 'N/A'}</TableCell>
+                                    <TableCell sx={{ 
+                                        color: '#94a3b8', 
+                                        wordBreak: 'break-all', 
+                                        maxWidth: '300px',
+                                        maxHeight: '40px',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        display: '-webkit-box',
+                                        WebkitLineClamp: 2,
+                                        WebkitBoxOrient: 'vertical'
+                                    }}>
+                                        {cookie.value || 'N/A'}
+                                    </TableCell>
                                     <TableCell sx={{ 
                                         color: cookie.expirationInfo.isExpired ? '#ef4444' : '#4ade80',
-                                        fontWeight: cookie.expirationInfo.isExpired ? 400 : 500
+                                        fontWeight: cookie.expirationInfo.isExpired ? 400 : 500,
+                                        maxHeight: '40px',
+                                        overflow: 'hidden'
                                     }}>
                                         {expirationInfo.dateString}
                                     </TableCell>
-                                    <TableCell sx={{ color: (cookie.secure || cookie.isSecure) ? '#4ade80' : '#94a3b8' }}>
+                                    <TableCell sx={{ color: (cookie.secure || cookie.isSecure) ? '#4ade80' : '#94a3b8', maxHeight: '40px' }}>
                                         {(cookie.secure || cookie.isSecure) ? 'Yes' : 'No'}
                                     </TableCell>
-                                    <TableCell sx={{ color: (cookie.httpOnly || cookie.isHttpOnly) ? '#4ade80' : '#94a3b8' }}>
+                                    <TableCell sx={{ color: (cookie.httpOnly || cookie.isHttpOnly) ? '#4ade80' : '#94a3b8', maxHeight: '40px' }}>
                                         {(cookie.httpOnly || cookie.isHttpOnly) ? 'Yes' : 'No'}
                                     </TableCell>
                                 </TableRow>
