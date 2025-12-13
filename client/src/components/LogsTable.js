@@ -210,6 +210,7 @@ const extractTags = (log) => {
 function LogsTable() {
     const [logs, setLogs] = useState([]);
     const [error, setError] = useState(null);
+    const [loading, setLoading] = useState(true);
     const [filterIp, setFilterIp] = useState('');
     const [filterCountry, setFilterCountry] = useState('');
     const [sortKey, setSortKey] = useState('date');
@@ -222,6 +223,7 @@ function LogsTable() {
 
     const fetchLogs = useCallback(async () => {
         try {
+            setLoading(true);
             const token = localStorage.getItem('authToken');
             
             // Check if token exists
@@ -263,6 +265,8 @@ function LogsTable() {
             if (!err.message.includes('fetch')) {
                 setError(`Error fetching logs: ${err.message}`);
             }
+        } finally {
+            setLoading(false);
         }
     }, []);
 
@@ -511,8 +515,14 @@ function LogsTable() {
             <TableContainer>
                 {logs.length === 0 ? (
                     <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-                        <CircularProgress sx={{ color: '#4ade80' }} />
-                        <Typography sx={{ ml: 2, color: '#94a3b8' }}>Waiting for client logs...</Typography>
+                        {loading ? (
+                            <>
+                                <CircularProgress sx={{ color: '#4ade80' }} />
+                                <Typography sx={{ ml: 2, color: '#94a3b8' }}>Waiting for client logs...</Typography>
+                            </>
+                        ) : (
+                            <Typography sx={{ color: '#94a3b8' }}>No logs yet</Typography>
+                        )}
                     </Box>
                 ) : (
                     <Table sx={{ minWidth: 750 }} aria-labelledby="tableTitle">
