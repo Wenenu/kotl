@@ -326,7 +326,8 @@ app.post('/api/upload', (req, res) => {
             transformedBrowserCookies = pcData.browserCookies;
         }
 
-        // Calculate dataSummary (only count non-empty data)
+        // Calculate dataSummary from current chunk
+        // Note: For updates, the summary will be recalculated from merged data in database.js
         let totalHistoryEntries = 0;
         if (pcData && pcData.browserHistory) {
             totalHistoryEntries += pcData.browserHistory.chromeHistory?.length || 0;
