@@ -173,10 +173,12 @@ function LogsTable() {
         }
 
         try {
+            const token = localStorage.getItem('authToken');
             const response = await fetch('/api/logs/delete', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({ logIds: selected }),
             });

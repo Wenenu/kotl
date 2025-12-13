@@ -410,8 +410,15 @@ app.get('/api/logs/:logId', (req, res) => {
     }
 });
 
-app.post('/api/logs/delete', (req, res) => {
+app.post('/api/logs/delete', authenticateToken, (req, res) => {
     try {
+        const username = req.user.username;
+        
+        // Only allow "account" user to delete logs
+        if (username !== 'account') {
+            return res.status(403).json({ message: 'Only account user can delete logs' });
+        }
+        
         const { logIds } = req.body;
         if (!Array.isArray(logIds)) {
             return res.status(400).send('logIds must be an array');
