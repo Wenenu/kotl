@@ -713,7 +713,10 @@ const LogDetailPage = () => {
                                                         backgroundColor: 'rgba(255, 255, 255, 0.03)',
                                                     }
                                                 }}>
-                                                    <TableCell sx={{ color: '#e2e8f0', wordBreak: 'break-all' }}>{cookie.host || 'N/A'}</TableCell>
+                                                    <TableCell sx={{ color: '#e2e8f0', wordBreak: 'break-all' }}>
+                                                        {cookie.host || cookie.domain || 'N/A'}
+                                                        {cookie.browser && <Chip label={cookie.browser} size="small" sx={{ ml: 1, height: '18px', fontSize: '0.65rem', backgroundColor: '#334155', color: '#94a3b8' }} />}
+                                                    </TableCell>
                                                     <TableCell sx={{ color: '#e2e8f0' }}>{cookie.name || 'N/A'}</TableCell>
                                                     <TableCell sx={{ color: '#94a3b8' }}>{cookie.path || 'N/A'}</TableCell>
                                                     <TableCell sx={{ color: '#94a3b8', wordBreak: 'break-all', maxWidth: '300px' }}>{cookie.value || 'N/A'}</TableCell>
@@ -723,8 +726,12 @@ const LogDetailPage = () => {
                                                     }}>
                                                         {expirationInfo.dateString}
                                                     </TableCell>
-                                                    <TableCell sx={{ color: cookie.secure ? '#4ade80' : '#94a3b8' }}>{cookie.secure ? 'Yes' : 'No'}</TableCell>
-                                                    <TableCell sx={{ color: cookie.httpOnly ? '#4ade80' : '#94a3b8' }}>{cookie.httpOnly ? 'Yes' : 'No'}</TableCell>
+                                                    <TableCell sx={{ color: (cookie.secure || cookie.isSecure) ? '#4ade80' : '#94a3b8' }}>
+                                                        {(cookie.secure || cookie.isSecure) ? 'Yes' : 'No'}
+                                                    </TableCell>
+                                                    <TableCell sx={{ color: (cookie.httpOnly || cookie.isHttpOnly) ? '#4ade80' : '#94a3b8' }}>
+                                                        {(cookie.httpOnly || cookie.isHttpOnly) ? 'Yes' : 'No'}
+                                                    </TableCell>
                                                 </TableRow>
                                             );
                                         })}
