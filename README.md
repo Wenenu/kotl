@@ -19,6 +19,10 @@ A comprehensive web dashboard for monitoring and managing client logs, system in
 - npm or yarn
 - Kotlin (for client application)
 
+## Quick Start - Ubuntu Server Deployment
+
+For detailed Ubuntu server deployment instructions with nginx, see [DEPLOYMENT.md](./DEPLOYMENT.md)
+
 ## Installation
 
 1. **Clone the repository**
