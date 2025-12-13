@@ -56,26 +56,30 @@ const initDatabase = () => {
             date DATETIME,
             data_summary TEXT,
             pc_data TEXT,
+            user TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `);
     
-    // Migrate existing database: add session_id and updated_at columns if they don't exist
+    // Migrate existing database: add session_id, updated_at, and user columns if they don't exist
     // Check if columns exist using PRAGMA table_info (safer than SELECT)
     try {
         const columns = db.prepare("PRAGMA table_info(logs)").all();
         const columnNames = columns.map(col => col.name);
-        const needsMigration = !columnNames.includes('session_id') || !columnNames.includes('updated_at');
+        const needsMigration = !columnNames.includes('session_id') || !columnNames.includes('updated_at') || !columnNames.includes('user');
         
         if (needsMigration) {
-            console.log('Migrating database schema: adding session_id and updated_at columns...');
+            console.log('Migrating database schema: adding session_id, updated_at, and user columns...');
             try {
                 if (!columnNames.includes('session_id')) {
                     db.exec('ALTER TABLE logs ADD COLUMN session_id TEXT');
                 }
                 if (!columnNames.includes('updated_at')) {
                     db.exec('ALTER TABLE logs ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP');
+                }
+                if (!columnNames.includes('user')) {
+                    db.exec('ALTER TABLE logs ADD COLUMN user TEXT');
                 }
                 console.log('Database migration completed successfully');
             } catch (migrationError) {
@@ -201,7 +205,9 @@ const loginAttemptsDb = {
 const logsDb = {
     createOrUpdate: (logData) => {
         try {
-            const { id, sessionId, ip, country, date, dataSummary, pcData } = logData;
+            const { id, sessionId, ip, country, date, dataSummary, pcData, user } = logData;
+            // Extract user from pcData if not provided directly
+            const logUser = user || pcData?.user || null;
             
             // Check if log exists by session_id
             let existingLog = null;
@@ -318,14 +324,15 @@ const logsDb = {
             // Update the log - check if updated_at column exists first
             let updateQuery = `
                 UPDATE logs 
-                SET ip = ?, country = ?, date = ?, data_summary = ?, pc_data = ?
+                SET ip = ?, country = ?, date = ?, data_summary = ?, pc_data = ?, user = ?
             `;
             const updateParams = [
                 ip || existingLog.ip,
                 country || existingLog.country,
                 date || existingLog.date,
                 JSON.stringify(mergedDataSummary),
-                JSON.stringify(mergedPcData)
+                JSON.stringify(mergedPcData),
+                logUser || existingLog.user || null
             ];
             
             // Check if updated_at column exists
@@ -349,18 +356,19 @@ const logsDb = {
             return existingLog.id;
         } else {
             // Create new log
-            db.prepare(`
-                INSERT INTO logs (id, session_id, ip, country, date, data_summary, pc_data)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            `).run(
-                id,
-                sessionId,
-                ip,
-                country,
-                date,
-                JSON.stringify(dataSummary),
-                JSON.stringify(pcData)
-            );
+                db.prepare(`
+                    INSERT INTO logs (id, session_id, ip, country, date, data_summary, pc_data, user)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                `).run(
+                    id,
+                    sessionId,
+                    ip,
+                    country,
+                    date,
+                    JSON.stringify(dataSummary),
+                    JSON.stringify(pcData),
+                    logUser
+                );
             return id;
             }
         } catch (error) {

