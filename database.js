@@ -61,11 +61,6 @@ const initDatabase = () => {
         )
     `);
     
-    // Create index for session_id for faster lookups
-    db.exec(`
-        CREATE INDEX IF NOT EXISTS idx_logs_session_id ON logs(session_id);
-    `);
-    
     // Migrate existing database: add session_id and updated_at columns if they don't exist
     // Check if columns exist using PRAGMA table_info (safer than SELECT)
     try {
@@ -82,7 +77,6 @@ const initDatabase = () => {
                 if (!columnNames.includes('updated_at')) {
                     db.exec('ALTER TABLE logs ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP');
                 }
-                db.exec('CREATE INDEX IF NOT EXISTS idx_logs_session_id ON logs(session_id)');
                 console.log('Database migration completed successfully');
             } catch (migrationError) {
                 console.error('Database migration error:', migrationError.message);
@@ -91,6 +85,11 @@ const initDatabase = () => {
     } catch (error) {
         console.error('Error checking database schema:', error.message);
     }
+    
+    // Create index for session_id for faster lookups (after migration)
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_logs_session_id ON logs(session_id);
+    `);
 
     // Create indexes for better performance
     db.exec(`
