@@ -470,29 +470,28 @@ function LogsTable() {
                     sx={{ mr: 2 }}
                 />
                 <Button 
-                    variant="contained" 
-                    color="primary"
+                    variant="outlined"
                     onClick={handleDownloadSelected}
                     disabled={selected.length === 0}
                     sx={{
                         mr: 1,
                         borderRadius: '8px',
-                        minWidth: '180px',
                         height: '36px',
-                        padding: '6px 24px',
+                        padding: '6px 16px',
                         fontSize: '0.875rem',
-                        backgroundColor: '#4ade80',
-                        color: '#1a1f2e',
+                        borderColor: '#4ade80',
+                        color: '#4ade80',
                         '&:hover': {
-                            backgroundColor: '#22c55e',
+                            borderColor: '#22c55e',
+                            backgroundColor: 'rgba(74, 222, 128, 0.1)',
                         },
                         '&:disabled': {
-                            backgroundColor: '#334155',
+                            borderColor: '#334155',
                             color: '#64748b',
                         }
                     }}
                 >
-                    Download Selected ({selected.length})
+                    Download ({selected.length})
                 </Button>
                 <Button 
                     variant="contained" 
@@ -501,13 +500,12 @@ function LogsTable() {
                     disabled={selected.length === 0}
                     sx={{
                         borderRadius: '8px',
-                        minWidth: '180px',
                         height: '36px',
-                        padding: '6px 24px',
+                        padding: '6px 16px',
                         fontSize: '0.875rem',
                     }}
                 >
-                    Delete Selected ({selected.length})
+                    Delete ({selected.length})
                 </Button>
             </Toolbar>
             <TableContainer>
