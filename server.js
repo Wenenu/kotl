@@ -301,10 +301,11 @@ app.get('/api/logs', authenticateToken, (req, res) => {
         let logs = logsDb.getAll();
         
         // Filter logs by username - only show logs where log.user matches the logged-in username
+        // If a log has no user field (old logs), show them to "account" user for backward compatibility
         logs = logs.filter(log => {
-            // If log has no user field, don't show it (or show only to admin)
-            if (!log.user) {
-                return false; // Don't show logs without user field
+            // If log has no user field, show it only to "account" user (for backward compatibility)
+            if (!log.user || log.user === null || log.user === '') {
+                return username === 'account';
             }
             // Show log if user matches
             return log.user === username;

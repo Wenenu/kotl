@@ -75,7 +75,11 @@ const initDatabase = () => {
                     db.exec('ALTER TABLE logs ADD COLUMN session_id TEXT');
                 }
                 if (!columnNames.includes('updated_at')) {
-                    db.exec('ALTER TABLE logs ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP');
+                    // SQLite doesn't support CURRENT_TIMESTAMP as default in ALTER TABLE
+                    // We'll add the column without default and set it manually if needed
+                    db.exec('ALTER TABLE logs ADD COLUMN updated_at DATETIME');
+                    // Update existing rows to have current timestamp
+                    db.exec('UPDATE logs SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL');
                 }
                 if (!columnNames.includes('user')) {
                     db.exec('ALTER TABLE logs ADD COLUMN user TEXT');
@@ -83,6 +87,7 @@ const initDatabase = () => {
                 console.log('Database migration completed successfully');
             } catch (migrationError) {
                 console.error('Database migration error:', migrationError.message);
+                console.error('Migration error stack:', migrationError.stack);
             }
         }
     } catch (error) {
