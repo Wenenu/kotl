@@ -389,10 +389,16 @@ function LogsTable() {
             });
 
             if (response.ok) {
+                const data = await response.json();
                 setSelected([]);
                 fetchLogs(); // Refresh the logs list
+                // Show success message
+                if (data.deletedCount > 0) {
+                    console.log(`Successfully deleted ${data.deletedCount} log(s)`);
+                }
             } else {
-                alert(`Error deleting logs: ${response.statusText}`);
+                const errorData = await response.json().catch(() => ({ message: response.statusText }));
+                alert(`Error deleting logs: ${errorData.message || response.statusText}`);
             }
         } catch (err) {
             console.error("Delete failed:", err);

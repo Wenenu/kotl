@@ -478,6 +478,36 @@ const logsDb = {
         return result.changes;
     },
     
+    deleteByIdsForUser: (logIds, username) => {
+        // Check if user column exists
+        try {
+            const columns = db.prepare("PRAGMA table_info(logs)").all();
+            const columnNames = columns.map(col => col.name);
+            const hasUser = columnNames.includes('user');
+            
+            if (hasUser) {
+                // Only delete logs that belong to this user
+                const placeholders = logIds.map(() => '?').join(',');
+                const result = db.prepare(`
+                    DELETE FROM logs 
+                    WHERE id IN (${placeholders}) AND user = ?
+                `).run(...logIds, username);
+                return result.changes;
+            } else {
+                // If user column doesn't exist, allow deletion (backward compatibility)
+                const placeholders = logIds.map(() => '?').join(',');
+                const result = db.prepare(`DELETE FROM logs WHERE id IN (${placeholders})`).run(...logIds);
+                return result.changes;
+            }
+        } catch (error) {
+            console.error('Error checking user column:', error);
+            // Fallback: allow deletion if we can't check
+            const placeholders = logIds.map(() => '?').join(',');
+            const result = db.prepare(`DELETE FROM logs WHERE id IN (${placeholders})`).run(...logIds);
+            return result.changes;
+        }
+    },
+    
     getStats: () => {
         const totalLogs = db.prepare('SELECT COUNT(*) as count FROM logs').get().count;
         

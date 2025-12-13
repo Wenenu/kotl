@@ -462,27 +462,32 @@ app.get('/api/logs/:logId', (req, res) => {
 app.post('/api/logs/delete', authenticateToken, (req, res) => {
     try {
         const username = req.user.username;
-        
-        // Only allow "account" user to delete logs
-        if (username !== 'account') {
-            return res.status(403).json({ message: 'Only account user can delete logs' });
-        }
-        
         const { logIds } = req.body;
-        if (!Array.isArray(logIds)) {
-            return res.status(400).send('logIds must be an array');
+        
+        if (!Array.isArray(logIds) || logIds.length === 0) {
+            return res.status(400).json({ message: 'logIds must be a non-empty array' });
         }
 
-        const deletedCount = logsDb.deleteByIds(logIds);
+        // Allow any authenticated user to delete logs
+        // Optionally: filter by user to only allow deleting own logs
+        let deletedCount;
+        if (username === 'account' || username === 'admin') {
+            // Admin/account users can delete any logs
+            deletedCount = logsDb.deleteByIds(logIds);
+        } else {
+            // Regular users can only delete their own logs
+            deletedCount = logsDb.deleteByIdsForUser(logIds, username);
+        }
 
         if (deletedCount > 0) {
+            console.log(`User ${username} deleted ${deletedCount} log(s): ${logIds.join(', ')}`);
             res.status(200).json({ message: `Deleted ${deletedCount} log(s)`, deletedCount });
         } else {
-            res.status(404).send('No logs found to delete');
+            res.status(404).json({ message: 'No logs found to delete or you do not have permission to delete these logs' });
         }
     } catch (error) {
         console.error("Error deleting logs:", error);
-        res.status(500).send('Error deleting logs');
+        res.status(500).json({ message: 'Error deleting logs', error: error.message });
     }
 });
 
