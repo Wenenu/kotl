@@ -332,15 +332,22 @@ const logsDb = {
                 JSON.stringify(mergedPcData)
             ];
             
-            // Check if updated_at column exists
+            // Check if updated_at and user columns exist
             try {
                 const columns = db.prepare("PRAGMA table_info(logs)").all();
-                const hasUpdatedAt = columns.some(col => col.name === 'updated_at');
+                const columnNames = columns.map(col => col.name);
+                const hasUpdatedAt = columnNames.includes('updated_at');
+                const hasUser = columnNames.includes('user');
+                
                 if (hasUpdatedAt) {
                     updateQuery += `, updated_at = CURRENT_TIMESTAMP`;
                 }
+                if (hasUser && user) {
+                    updateQuery += `, user = ?`;
+                    updateParams.push(user);
+                }
             } catch (e) {
-                // If we can't check, just proceed without updated_at
+                // If we can't check, just proceed without updated_at/user
             }
             
             updateQuery += ` WHERE session_id = ?`;
