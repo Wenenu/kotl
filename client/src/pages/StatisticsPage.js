@@ -238,13 +238,13 @@ function StatisticsPage() {
                         border: '1px solid #334155', 
                         borderRadius: '12px' 
                     }}>
-                        <Typography variant="h6" sx={{ color: '#4ade80', mb: 3, fontWeight: 600, textAlign: 'center' }}>
+                        <Typography variant="h6" sx={{ color: '#4ade80', mb: 1, fontWeight: 600, textAlign: 'center' }}>
                             Total Logs Distribution
                         </Typography>
-                        <Typography variant="h4" sx={{ color: '#e2e8f0', mb: 2, textAlign: 'center', fontWeight: 700 }}>
+                        <Typography variant="h4" sx={{ color: '#e2e8f0', mb: 1, textAlign: 'center', fontWeight: 700 }}>
                             {stats.totalLogs}
                         </Typography>
-                        <ResponsiveContainer width="100%" height={200}>
+                        <ResponsiveContainer width="100%" height={180}>
                             <PieChart>
                                 <Pie
                                     data={pieData}
@@ -252,7 +252,7 @@ function StatisticsPage() {
                                     cy="50%"
                                     innerRadius={60}
                                     outerRadius={90}
-                                    paddingAngle={5}
+                                    paddingAngle={2}
                                     dataKey="value"
                                 >
                                     {pieData.map((entry, index) => (
@@ -269,7 +269,7 @@ function StatisticsPage() {
                                 />
                             </PieChart>
                         </ResponsiveContainer>
-                        <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                     <Box sx={{ width: 16, height: 16, backgroundColor: '#4ade80', borderRadius: '4px' }} />
