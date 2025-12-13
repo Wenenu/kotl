@@ -58,10 +58,11 @@ function LogsTable() {
             });
             
             if (response.status === 401 || response.status === 403) {
-                // Token expired or invalid - clear it and show error
+                // Token expired or invalid - clear it
                 localStorage.removeItem('authToken');
                 localStorage.removeItem('userInfo');
-                setError('Session expired. Please refresh the page and log in again.');
+                // Reload page to show login screen
+                window.location.reload();
                 return;
             }
             
