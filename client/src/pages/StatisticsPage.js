@@ -142,27 +142,6 @@ function StatisticsPage() {
                     }}>
                         <CardContent>
                             <Typography variant="h6" sx={{ color: '#94a3b8', mb: 1, fontSize: '0.9rem' }}>
-                                CLIENTS
-                            </Typography>
-                            <Typography variant="h3" sx={{ color: '#60a5fa', fontWeight: 700 }}>
-                                {stats.allClients}
-                            </Typography>
-                            <Typography variant="body2" sx={{ color: '#94a3b8', mt: 1 }}>
-                                {stats.onlineClients} online, {stats.deadClients} inactive
-                            </Typography>
-                        </CardContent>
-                    </Card>
-                </Grid>
-
-                <Grid item xs={12} sm={6} md={3}>
-                    <Card sx={{ 
-                        backgroundColor: '#252b3b', 
-                        border: '1px solid #334155', 
-                        borderRadius: '12px',
-                        height: '100%'
-                    }}>
-                        <CardContent>
-                            <Typography variant="h6" sx={{ color: '#94a3b8', mb: 1, fontSize: '0.9rem' }}>
                                 IMPORTANT LOGS
                             </Typography>
                             <Typography variant="h3" sx={{ color: '#f59e0b', fontWeight: 700 }}>
