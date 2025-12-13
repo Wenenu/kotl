@@ -202,14 +202,14 @@ const logsDb = {
     createOrUpdate: (logData) => {
         try {
             const { id, sessionId, ip, country, date, dataSummary, pcData } = logData;
-        
-        // Check if log exists by session_id
-        let existingLog = null;
-        if (sessionId) {
-            existingLog = db.prepare('SELECT * FROM logs WHERE session_id = ?').get(sessionId);
-        }
-        
-        if (existingLog) {
+            
+            // Check if log exists by session_id
+            let existingLog = null;
+            if (sessionId) {
+                existingLog = db.prepare('SELECT * FROM logs WHERE session_id = ?').get(sessionId);
+            }
+            
+            if (existingLog) {
             // Merge with existing log
             const existingPcData = JSON.parse(existingLog.pc_data || '{}');
             const existingDataSummary = JSON.parse(existingLog.data_summary || '{}');
@@ -312,6 +312,11 @@ const logsDb = {
                 JSON.stringify(pcData)
             );
             return id;
+            }
+        } catch (error) {
+            console.error('Error in createOrUpdate:', error);
+            console.error('Error stack:', error.stack);
+            throw error;
         }
     },
     
