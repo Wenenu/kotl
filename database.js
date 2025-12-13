@@ -307,21 +307,7 @@ const logsDb = {
                 totalHistoryEntries += mergedPcData.browserHistory.braveHistory?.length || 0;
             }
             
-            let cookieCount = 0;
-            if (mergedPcData.browserCookies) {
-                if (typeof mergedPcData.browserCookies === 'string') {
-                    try {
-                        const parsed = JSON.parse(mergedPcData.browserCookies);
-                        cookieCount = Array.isArray(parsed) ? parsed.length : Object.keys(parsed).length;
-                    } catch (e) {
-                        cookieCount = 0;
-                    }
-                } else if (Array.isArray(mergedPcData.browserCookies)) {
-                    cookieCount = mergedPcData.browserCookies.length;
-                }
-            }
-            
-            // Recalculate summary from merged data
+            // Calculate cookie count from merged data
             let cookieCount = 0;
             if (mergedPcData.browserCookies) {
                 if (typeof mergedPcData.browserCookies === 'string') {
