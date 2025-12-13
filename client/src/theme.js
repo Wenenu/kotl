@@ -1,31 +1,92 @@
 import { createTheme } from '@mui/material/styles';
 
-const ntsleuthTheme = createTheme({
+// Helper functions for color manipulation
+function hexToRgb(hex) {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16)
+  } : null;
+}
+
+function rgbToHex(r, g, b) {
+  return "#" + [r, g, b].map(x => {
+    const hex = x.toString(16);
+    return hex.length === 1 ? "0" + hex : hex;
+  }).join("");
+}
+
+function lightenColor(hex, percent) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+  const r = Math.min(255, Math.floor(rgb.r + (255 - rgb.r) * percent));
+  const g = Math.min(255, Math.floor(rgb.g + (255 - rgb.g) * percent));
+  const b = Math.min(255, Math.floor(rgb.b + (255 - rgb.b) * percent));
+  return rgbToHex(r, g, b);
+}
+
+function darkenColor(hex, percent) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+  const r = Math.max(0, Math.floor(rgb.r * (1 - percent)));
+  const g = Math.max(0, Math.floor(rgb.g * (1 - percent)));
+  const b = Math.max(0, Math.floor(rgb.b * (1 - percent)));
+  return rgbToHex(r, g, b);
+}
+
+function adjustOpacity(hex, opacity) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity})`;
+}
+
+function isLightColor(hex) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return false;
+  // Calculate relative luminance
+  const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+  return luminance > 0.5;
+}
+
+export const createCustomTheme = (settings = {}) => {
+  const {
+    primary = '#4ade80',
+    secondary = '#60a5fa',
+    background = '#1a1f2e',
+    paper = '#252b3b',
+    textPrimary = '#e2e8f0',
+    textSecondary = '#94a3b8',
+    borderRadius = 12,
+    fontFamily = 'Inter',
+  } = settings;
+
+  return createTheme({
   palette: {
     mode: 'dark',
     primary: {
-      main: '#4ade80', // Softer, mellow green
-      light: '#86efac',
-      dark: '#22c55e',
+      main: primary,
+      light: lightenColor(primary, 0.2),
+      dark: darkenColor(primary, 0.2),
     },
     secondary: {
-      main: '#60a5fa', // Softer blue accent
-      light: '#93c5fd',
-      dark: '#3b82f6',
+      main: secondary,
+      light: lightenColor(secondary, 0.2),
+      dark: darkenColor(secondary, 0.2),
     },
     background: {
-      default: '#1a1f2e', // Dark blue-gray instead of pure black
-      paper: '#252b3b', // Slightly lighter blue-gray for cards
+      default: background,
+      paper: paper,
     },
     text: {
-      primary: '#e2e8f0', // Soft white/off-white
-      secondary: '#94a3b8', // Mellow gray for secondary text
+      primary: textPrimary,
+      secondary: textSecondary,
     },
     divider: '#334155', // Softer divider color
   },
   typography: {
     fontFamily: [
-      'Inter',
+      fontFamily,
       '-apple-system',
       'BlinkMacSystemFont',
       'Segoe UI',
@@ -38,31 +99,31 @@ const ntsleuthTheme = createTheme({
     h4: {
       fontWeight: 700,
       fontSize: '2rem',
-      color: '#e2e8f0',
+      color: textPrimary,
     },
     h5: {
       fontWeight: 600,
       fontSize: '1.5rem',
-      color: '#e2e8f0',
+      color: textPrimary,
     },
     h6: {
       fontWeight: 600,
       fontSize: '1.25rem',
-      color: '#e2e8f0',
+      color: textPrimary,
     },
     body1: {
-      color: '#e2e8f0',
+      color: textPrimary,
     },
     body2: {
-      color: '#94a3b8',
+      color: textSecondary,
     },
   },
   components: {
     MuiAppBar: {
       styleOverrides: {
         root: {
-          backgroundColor: '#1a1f2e',
-          borderBottom: '1px solid #334155',
+          backgroundColor: background,
+          borderBottom: `1px solid ${adjustOpacity(textSecondary, 0.3)}`,
           boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
           borderRadius: 0,
         },
@@ -71,33 +132,33 @@ const ntsleuthTheme = createTheme({
     MuiDrawer: {
       styleOverrides: {
         paper: {
-          backgroundColor: '#1e293b',
-          borderRight: '1px solid #334155',
-          color: '#e2e8f0',
+          backgroundColor: darkenColor(background, 0.05),
+          borderRight: `1px solid ${adjustOpacity(textSecondary, 0.3)}`,
+          color: textPrimary,
         },
       },
     },
     MuiListItemButton: {
       styleOverrides: {
         root: {
-          color: '#94a3b8',
-          borderRadius: '8px',
+          color: textSecondary,
+          borderRadius: `${borderRadius * 0.67}px`,
           margin: '4px 8px',
           '&.active': {
-            backgroundColor: 'rgba(74, 222, 128, 0.15)',
-            color: '#4ade80',
-            borderLeft: '3px solid #4ade80',
+            backgroundColor: `${primary}26`,
+            color: primary,
+            borderLeft: `3px solid ${primary}`,
             '& .MuiListItemIcon-root': {
-              color: '#4ade80',
+              color: primary,
             },
             '& .MuiListItemText-primary': {
-              color: '#4ade80',
+              color: primary,
               fontWeight: 600,
             },
           },
           '&:hover': {
             backgroundColor: 'rgba(255, 255, 255, 0.05)',
-            color: '#e2e8f0',
+            color: textPrimary,
           },
         },
       },
@@ -105,7 +166,7 @@ const ntsleuthTheme = createTheme({
     MuiListItemIcon: {
       styleOverrides: {
         root: {
-          color: '#94a3b8',
+          color: textSecondary,
           minWidth: '40px',
         },
       },
@@ -113,7 +174,7 @@ const ntsleuthTheme = createTheme({
     MuiListItemText: {
       styleOverrides: {
         primary: {
-          color: '#94a3b8',
+          color: textSecondary,
           fontSize: '0.95rem',
         },
       },
@@ -121,11 +182,11 @@ const ntsleuthTheme = createTheme({
     MuiPaper: {
       styleOverrides: {
         root: {
-          backgroundColor: '#252b3b',
+          backgroundColor: paper,
           backgroundImage: 'none',
           boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-          border: '1px solid #334155',
-          borderRadius: '12px',
+          border: `1px solid ${adjustOpacity(textSecondary, 0.3)}`,
+          borderRadius: `${borderRadius}px`,
         },
       },
     },
@@ -134,21 +195,21 @@ const ntsleuthTheme = createTheme({
         root: {
           textTransform: 'none',
           fontWeight: 500,
-          borderRadius: '8px',
+          borderRadius: `${borderRadius * 0.67}px`,
         },
         contained: {
-          backgroundColor: '#4ade80',
-          color: '#1a1f2e',
+          backgroundColor: primary,
+          color: isLightColor(primary) ? '#000' : '#fff',
           '&:hover': {
-            backgroundColor: '#22c55e',
+            backgroundColor: darkenColor(primary, 0.15),
           },
         },
         outlined: {
-          borderColor: '#4ade80',
-          color: '#4ade80',
+          borderColor: primary,
+          color: primary,
           '&:hover': {
-            borderColor: '#22c55e',
-            backgroundColor: 'rgba(74, 222, 128, 0.1)',
+            borderColor: darkenColor(primary, 0.15),
+            backgroundColor: `${primary}1A`,
           },
         },
       },
@@ -156,16 +217,16 @@ const ntsleuthTheme = createTheme({
     MuiChip: {
       styleOverrides: {
         root: {
-          backgroundColor: '#252b3b',
-          color: '#e2e8f0',
-          border: '1px solid #334155',
+          backgroundColor: paper,
+          color: textPrimary,
+          border: `1px solid ${adjustOpacity(textSecondary, 0.3)}`,
           fontWeight: 500,
-          borderRadius: '8px',
+          borderRadius: `${borderRadius * 0.67}px`,
         },
         colorSuccess: {
-          backgroundColor: 'rgba(74, 222, 128, 0.15)',
-          color: '#4ade80',
-          border: '1px solid rgba(74, 222, 128, 0.3)',
+          backgroundColor: `${primary}26`,
+          color: primary,
+          border: `1px solid ${adjustOpacity(primary, 0.3)}`,
         },
         colorError: {
           backgroundColor: 'rgba(239, 68, 68, 0.15)',
@@ -177,12 +238,12 @@ const ntsleuthTheme = createTheme({
     MuiTableCell: {
       styleOverrides: {
         root: {
-          borderColor: '#334155',
-          color: '#e2e8f0',
+          borderColor: adjustOpacity(textSecondary, 0.3),
+          color: textPrimary,
         },
         head: {
-          backgroundColor: '#252b3b',
-          color: '#4ade80',
+          backgroundColor: paper,
+          color: primary,
           fontWeight: 600,
         },
       },
@@ -200,26 +261,26 @@ const ntsleuthTheme = createTheme({
       styleOverrides: {
         root: {
           '& .MuiOutlinedInput-root': {
-            backgroundColor: '#252b3b',
-            color: '#e2e8f0',
-            borderRadius: '8px',
+            backgroundColor: paper,
+            color: textPrimary,
+            borderRadius: `${borderRadius * 0.67}px`,
             '& fieldset': {
-              borderColor: '#334155',
+              borderColor: adjustOpacity(textSecondary, 0.3),
             },
             '&:hover fieldset': {
-              borderColor: '#4ade80',
+              borderColor: primary,
             },
             '&.Mui-focused fieldset': {
-              borderColor: '#4ade80',
+              borderColor: primary,
             },
             '& .MuiInputBase-input': {
-              color: '#e2e8f0 !important',
+              color: `${textPrimary} !important`,
             },
           },
           '& .MuiInputLabel-root': {
-            color: '#94a3b8',
+            color: textSecondary,
             '&.Mui-focused': {
-              color: '#4ade80',
+              color: primary,
             },
           },
         },
@@ -228,9 +289,9 @@ const ntsleuthTheme = createTheme({
     MuiAccordion: {
       styleOverrides: {
         root: {
-          backgroundColor: '#252b3b',
-          border: '1px solid #334155',
-          borderRadius: '12px !important',
+          backgroundColor: paper,
+          border: `1px solid ${adjustOpacity(textSecondary, 0.3)}`,
+          borderRadius: `${borderRadius}px !important`,
           marginBottom: '12px',
           '&:before': {
             display: 'none',
@@ -244,8 +305,8 @@ const ntsleuthTheme = createTheme({
     MuiAccordionSummary: {
       styleOverrides: {
         root: {
-          backgroundColor: '#252b3b',
-          borderRadius: '12px',
+          backgroundColor: paper,
+          borderRadius: `${borderRadius}px`,
           padding: '0 16px',
           '&:hover': {
             backgroundColor: 'rgba(255, 255, 255, 0.03)',
@@ -261,11 +322,14 @@ const ntsleuthTheme = createTheme({
       styleOverrides: {
         root: {
           padding: '16px',
-          backgroundColor: '#252b3b',
+          backgroundColor: paper,
         },
       },
     },
-  },
-});
+  });
+};
+
+// Default theme for backward compatibility
+const ntsleuthTheme = createCustomTheme();
 
 export default ntsleuthTheme;

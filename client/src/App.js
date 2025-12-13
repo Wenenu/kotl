@@ -5,7 +5,7 @@ import {
     Route
 } from 'react-router-dom';
 import { Box, Toolbar, ThemeProvider, CssBaseline } from '@mui/material'; // Import ThemeProvider and CssBaseline
-import ntsleuthTheme from './theme'; // Import your custom theme
+import { createCustomTheme } from './theme'; // Import theme creator function
 import './App.css';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
@@ -19,12 +19,45 @@ import Login from './components/Login';
 
 function App() {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [theme, setTheme] = useState(() => {
+        // Load theme settings from localStorage on initial load
+        const savedSettings = localStorage.getItem('themeSettings');
+        if (savedSettings) {
+            try {
+                const parsed = JSON.parse(savedSettings);
+                return createCustomTheme(parsed);
+            } catch (e) {
+                console.error('Error loading theme settings:', e);
+            }
+        }
+        return createCustomTheme();
+    });
 
     useEffect(() => {
         const token = localStorage.getItem('authToken');
         if (token) {
             setIsLoggedIn(true);
         }
+    }, []);
+
+    useEffect(() => {
+        // Listen for theme updates from Settings page
+        const handleThemeUpdate = () => {
+            const savedSettings = localStorage.getItem('themeSettings');
+            if (savedSettings) {
+                try {
+                    const parsed = JSON.parse(savedSettings);
+                    setTheme(createCustomTheme(parsed));
+                } catch (e) {
+                    console.error('Error loading theme settings:', e);
+                }
+            }
+        };
+
+        window.addEventListener('themeUpdated', handleThemeUpdate);
+        return () => {
+            window.removeEventListener('themeUpdated', handleThemeUpdate);
+        };
     }, []);
 
     const handleLogin = () => {
@@ -43,7 +76,7 @@ function App() {
 
     return (
         <Router>
-            <ThemeProvider theme={ntsleuthTheme}>
+            <ThemeProvider theme={theme}>
                 <CssBaseline /> {/* Optional: For consistent baseline styles */}
                 <Box sx={{ display: 'flex' }}>
                     <Header onLogout={handleLogout} />
