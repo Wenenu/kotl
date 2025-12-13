@@ -8,7 +8,15 @@ const { userDb, loginAttemptsDb, logsDb } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const JWT_SECRET = process.env.JWT_SECRET || '69b98337d00be3ceca424b4032f5cb86912be404e521287af185c7482178536f572858b39493b7a5a62d9f305dd3bc230683144444ae37a627a43133ba541a45';
+
+// JWT_SECRET must be set in environment variables - no hardcoded fallback
+if (!process.env.JWT_SECRET) {
+    console.error('ERROR: JWT_SECRET environment variable is required!');
+    console.error('Please set JWT_SECRET in your .env file.');
+    console.error('Generate one with: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"');
+    process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -185,9 +193,100 @@ app.post('/api/auth/change-password', authenticateToken, (req, res) => {
 app.get('/api/auth/users', authenticateToken, (req, res) => {
     try {
         const users = userDb.getAll();
-        res.json(users);
+        // Don't send password hashes to client
+        const safeUsers = users.map(user => ({
+            id: user.id,
+            username: user.username,
+            created_at: user.created_at,
+            last_login: user.last_login,
+            is_active: user.is_active
+        }));
+        res.json(safeUsers);
     } catch (error) {
         console.error('Error fetching users:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// Delete user (admin only)
+app.delete('/api/auth/users/:username', authenticateToken, (req, res) => {
+    try {
+        const { username } = req.params;
+        const currentUser = req.user.username;
+        
+        // Prevent self-deletion
+        if (username === currentUser) {
+            return res.status(400).json({ message: 'Cannot delete your own account' });
+        }
+        
+        const user = userDb.findByUsername(username);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        
+        const { db } = require('./database');
+        db.prepare('DELETE FROM users WHERE username = ?').run(username);
+        
+        console.log(`User ${username} deleted by ${currentUser}`);
+        res.json({ success: true, message: 'User deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting user:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// Deactivate/Activate user (admin only)
+app.patch('/api/auth/users/:username', authenticateToken, (req, res) => {
+    try {
+        const { username } = req.params;
+        const { is_active } = req.body;
+        
+        if (typeof is_active !== 'boolean') {
+            return res.status(400).json({ message: 'is_active must be a boolean' });
+        }
+        
+        const user = userDb.findByUsername(username);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        
+        const { db } = require('./database');
+        db.prepare('UPDATE users SET is_active = ? WHERE username = ?').run(is_active ? 1 : 0, username);
+        
+        console.log(`User ${username} ${is_active ? 'activated' : 'deactivated'} by ${req.user.username}`);
+        res.json({ success: true, message: `User ${is_active ? 'activated' : 'deactivated'} successfully` });
+    } catch (error) {
+        console.error('Error updating user:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// Reset password (admin only - no old password required)
+app.post('/api/auth/reset-password', authenticateToken, (req, res) => {
+    try {
+        const { username, newPassword } = req.body;
+        
+        if (!username || !newPassword) {
+            return res.status(400).json({ message: 'Username and new password are required' });
+        }
+        
+        if (newPassword.length < 6) {
+            return res.status(400).json({ message: 'New password must be at least 6 characters' });
+        }
+        
+        const user = userDb.findByUsername(username);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        
+        // Hash new password with bcrypt (includes automatic salting)
+        const passwordHash = bcrypt.hashSync(newPassword, 10);
+        userDb.updatePassword(username, passwordHash);
+        
+        console.log(`Password reset for user ${username} by ${req.user.username}`);
+        res.json({ success: true, message: 'Password reset successfully' });
+    } catch (error) {
+        console.error('Error resetting password:', error);
         res.status(500).json({ message: 'Internal server error' });
     }
 });
@@ -205,11 +304,14 @@ app.get('/api/logs', (req, res) => {
 
 app.post('/api/upload', (req, res) => {
     try {
-        console.log("Received upload request");
+        const sessionId = req.headers['x-session-id'] || null;
         const pcData = req.body;
         const ip = pcData.ipAddress || 'Unknown';
         const country = pcData.location?.countryName || 'Unknown';
         const dateTime = pcData.dateTime || new Date().toISOString();
+
+        // Generate consistent log ID based on session ID or timestamp
+        const logId = sessionId ? `log-${sessionId}` : `log-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
         // Data transformation for browserCookies
         let transformedBrowserCookies = [];
@@ -224,7 +326,7 @@ app.post('/api/upload', (req, res) => {
             transformedBrowserCookies = pcData.browserCookies;
         }
 
-        // Calculate dataSummary
+        // Calculate dataSummary (only count non-empty data)
         let totalHistoryEntries = 0;
         if (pcData && pcData.browserHistory) {
             totalHistoryEntries += pcData.browserHistory.chromeHistory?.length || 0;
@@ -241,8 +343,9 @@ app.post('/api/upload', (req, res) => {
             cookies: transformedBrowserCookies.length || 0,
         };
 
-        const newLog = {
-            id: `log-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        const logData = {
+            id: logId,
+            sessionId: sessionId,
             ip: ip,
             country: country,
             date: dateTime,
@@ -253,8 +356,14 @@ app.post('/api/upload', (req, res) => {
             },
         };
 
-        logsDb.create(newLog);
-        console.log(`Log saved: ${newLog.id} from ${ip}`);
+        // Use createOrUpdate to merge chunks
+        const savedLogId = logsDb.createOrUpdate(logData);
+        
+        if (sessionId) {
+            console.log(`Log chunk received and merged: ${savedLogId} (session: ${sessionId}) from ${ip}`);
+        } else {
+            console.log(`Log saved: ${savedLogId} from ${ip}`);
+        }
 
         res.status(200).send('Log received and saved');
     } catch (error) {

