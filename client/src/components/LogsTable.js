@@ -310,6 +310,41 @@ function LogsTable() {
         }
     };
 
+    const handleDownloadSelected = async () => {
+        if (selected.length === 0) return;
+
+        try {
+            // Download each selected log with a small delay to avoid browser blocking
+            for (let i = 0; i < selected.length; i++) {
+                const logId = selected[i];
+                const response = await fetch(`/api/download/${logId}`);
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = `${logId}_data.zip`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    
+                    // Small delay between downloads to prevent browser blocking
+                    if (i < selected.length - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                    }
+                } else {
+                    console.error(`Failed to download log ${logId}: ${response.status}`);
+                }
+            }
+            
+            alert(`Started downloading ${selected.length} log(s). Downloads will appear in your browser's download folder.`);
+        } catch (err) {
+            console.error("Download failed:", err);
+            alert("Failed to download some logs. Check console for details.");
+        }
+    };
+
     const handleChangePage = (event, newPage) => {
         setPage(newPage);
         setSelected([]); // Clear selection when changing pages
@@ -436,11 +471,40 @@ function LogsTable() {
                 />
                 <Button 
                     variant="contained" 
+                    color="primary"
+                    onClick={handleDownloadSelected}
+                    disabled={selected.length === 0}
+                    sx={{
+                        mr: 1,
+                        borderRadius: '8px',
+                        minWidth: '180px',
+                        height: '36px',
+                        padding: '6px 24px',
+                        fontSize: '0.875rem',
+                        backgroundColor: '#4ade80',
+                        color: '#1a1f2e',
+                        '&:hover': {
+                            backgroundColor: '#22c55e',
+                        },
+                        '&:disabled': {
+                            backgroundColor: '#334155',
+                            color: '#64748b',
+                        }
+                    }}
+                >
+                    Download Selected ({selected.length})
+                </Button>
+                <Button 
+                    variant="contained" 
                     color="error" 
                     onClick={handleDeleteSelected}
                     disabled={selected.length === 0}
                     sx={{
                         borderRadius: '8px',
+                        minWidth: '180px',
+                        height: '36px',
+                        padding: '6px 24px',
+                        fontSize: '0.875rem',
                     }}
                 >
                     Delete Selected ({selected.length})
