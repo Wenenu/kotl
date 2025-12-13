@@ -90,10 +90,21 @@ const initDatabase = () => {
     }
     
     // Create indexes for faster lookups (after migration)
-    db.exec(`
-        CREATE INDEX IF NOT EXISTS idx_logs_session_id ON logs(session_id);
-        CREATE INDEX IF NOT EXISTS idx_logs_user ON logs(user);
-    `);
+    // Check if columns exist before creating indexes
+    try {
+        const columns = db.prepare("PRAGMA table_info(logs)").all();
+        const columnNames = columns.map(col => col.name);
+        
+        // Always try to create session_id index (it should exist after migration)
+        db.exec('CREATE INDEX IF NOT EXISTS idx_logs_session_id ON logs(session_id)');
+        
+        // Only create user index if user column exists
+        if (columnNames.includes('user')) {
+            db.exec('CREATE INDEX IF NOT EXISTS idx_logs_user ON logs(user)');
+        }
+    } catch (indexError) {
+        console.error('Error creating indexes:', indexError.message);
+    }
 
     // Create indexes for better performance
     db.exec(`
