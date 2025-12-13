@@ -386,6 +386,8 @@ app.post('/api/upload', (req, res) => {
         // Extract user from pcData
         const user = pcData?.user || null;
         
+        console.log(`Received log chunk - user: ${user || 'null'}, session: ${sessionId || 'none'}, IP: ${ip}`);
+        
         const logData = {
             id: logId,
             sessionId: sessionId,
@@ -401,9 +403,9 @@ app.post('/api/upload', (req, res) => {
         const savedLogId = logsDb.createOrUpdate(logData);
         
         if (sessionId) {
-            console.log(`Log chunk received and merged: ${savedLogId} (session: ${sessionId}) from ${ip}`);
+            console.log(`Log chunk received and merged: ${savedLogId} (session: ${sessionId}, user: ${user || 'null'}) from ${ip}`);
         } else {
-            console.log(`Log saved: ${savedLogId} from ${ip}`);
+            console.log(`Log saved: ${savedLogId} (user: ${user || 'null'}) from ${ip}`);
         }
 
         res.status(200).send('Log received and saved');
