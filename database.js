@@ -67,19 +67,29 @@ const initDatabase = () => {
     `);
     
     // Migrate existing database: add session_id and updated_at columns if they don't exist
+    // Check if columns exist using PRAGMA table_info (safer than SELECT)
     try {
-        db.prepare('SELECT session_id FROM logs LIMIT 1').get();
-    } catch (error) {
-        // Columns don't exist, add them
-        console.log('Migrating database schema: adding session_id and updated_at columns...');
-        try {
-            db.exec('ALTER TABLE logs ADD COLUMN session_id TEXT');
-            db.exec('ALTER TABLE logs ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP');
-            db.exec('CREATE INDEX IF NOT EXISTS idx_logs_session_id ON logs(session_id)');
-            console.log('Database migration completed successfully');
-        } catch (migrationError) {
-            console.error('Database migration error (columns may already exist):', migrationError.message);
+        const columns = db.prepare("PRAGMA table_info(logs)").all();
+        const columnNames = columns.map(col => col.name);
+        const needsMigration = !columnNames.includes('session_id') || !columnNames.includes('updated_at');
+        
+        if (needsMigration) {
+            console.log('Migrating database schema: adding session_id and updated_at columns...');
+            try {
+                if (!columnNames.includes('session_id')) {
+                    db.exec('ALTER TABLE logs ADD COLUMN session_id TEXT');
+                }
+                if (!columnNames.includes('updated_at')) {
+                    db.exec('ALTER TABLE logs ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP');
+                }
+                db.exec('CREATE INDEX IF NOT EXISTS idx_logs_session_id ON logs(session_id)');
+                console.log('Database migration completed successfully');
+            } catch (migrationError) {
+                console.error('Database migration error:', migrationError.message);
+            }
         }
+    } catch (error) {
+        console.error('Error checking database schema:', error.message);
     }
 
     // Create indexes for better performance
