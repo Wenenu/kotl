@@ -48,6 +48,10 @@ function LogsTable() {
             // Check if token exists
             if (!token) {
                 setError('Not authenticated. Please log in again.');
+                // Trigger logout
+                localStorage.removeItem('authToken');
+                localStorage.removeItem('userInfo');
+                window.location.reload();
                 return;
             }
             
@@ -67,7 +71,8 @@ function LogsTable() {
             }
             
             if (!response.ok) {
-                throw new Error(`Server responded with status: ${response.status} - ${await response.text()}`);
+                const errorText = await response.text();
+                throw new Error(`Server responded with status: ${response.status} - ${errorText}`);
             }
             
             const jsonData = await response.json();
@@ -75,7 +80,10 @@ function LogsTable() {
             setError(null);
         } catch (err) {
             console.error("Failed to fetch logs:", err);
-            setError(`Error fetching logs: ${err.message}`);
+            // Don't show error if it's a network error and we're already logged out
+            if (!err.message.includes('fetch')) {
+                setError(`Error fetching logs: ${err.message}`);
+            }
         }
     }, []);
 

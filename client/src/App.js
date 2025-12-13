@@ -34,10 +34,38 @@ function App() {
     });
 
     useEffect(() => {
-        const token = localStorage.getItem('authToken');
-        if (token) {
-            setIsLoggedIn(true);
-        }
+        const verifyToken = async () => {
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                setIsLoggedIn(false);
+                return;
+            }
+
+            // Verify token by making a test request
+            try {
+                const response = await fetch('/api/logs', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.status === 401 || response.status === 403) {
+                    // Token is invalid - clear it
+                    localStorage.removeItem('authToken');
+                    localStorage.removeItem('userInfo');
+                    setIsLoggedIn(false);
+                } else {
+                    // Token is valid
+                    setIsLoggedIn(true);
+                }
+            } catch (err) {
+                // Network error - assume token is valid for now
+                // User will see error when trying to fetch data
+                setIsLoggedIn(true);
+            }
+        };
+
+        verifyToken();
     }, []);
 
     useEffect(() => {
