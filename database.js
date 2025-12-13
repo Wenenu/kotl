@@ -440,6 +440,7 @@ const logsDb = {
             ip: log.ip,
             country: log.country,
             date: log.date,
+            user: log.user || null,
             dataSummary: JSON.parse(log.data_summary || '{}'),
             pcData: JSON.parse(log.pc_data || '{}')
         }));
