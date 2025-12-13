@@ -292,10 +292,19 @@ app.post('/api/auth/reset-password', authenticateToken, (req, res) => {
 });
 
 // Logs endpoints
-app.get('/api/logs', (req, res) => {
+app.get('/api/logs', authenticateToken, (req, res) => {
     try {
-        const logs = logsDb.getAll();
-        res.json(logs);
+        const username = req.user.username;
+        let logs = logsDb.getAll();
+        
+        // Only show logs for user "account", hide logs for other users
+        if (username === 'account') {
+            // User "account" sees all logs
+            res.json(logs);
+        } else {
+            // Other users see no logs
+            res.json([]);
+        }
     } catch (error) {
         console.error('Error fetching logs:', error);
         res.status(500).json({ message: 'Internal server error' });

@@ -43,7 +43,12 @@ function LogsTable() {
 
     const fetchLogs = useCallback(async () => {
         try {
-            const response = await fetch('/api/logs');
+            const token = localStorage.getItem('authToken');
+            const response = await fetch('/api/logs', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
             if (!response.ok) {
                 throw new Error(`Server responded with status: ${response.status} - ${await response.text()}`);
             }
