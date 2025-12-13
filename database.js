@@ -294,6 +294,12 @@ const logsDb = {
                     ? pcData.cryptoWalletFolders 
                     : (hasArrayData(existingPcData.cryptoWalletFolders) 
                         ? existingPcData.cryptoWalletFolders 
+                        : null),
+                // Saved passwords: use new data if it has items, otherwise keep existing
+                savedPasswords: (hasValue(pcData.savedPasswords) && hasArrayData(pcData.savedPasswords))
+                    ? pcData.savedPasswords
+                    : (hasArrayData(existingPcData.savedPasswords)
+                        ? existingPcData.savedPasswords
                         : null)
             };
             
