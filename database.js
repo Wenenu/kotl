@@ -358,9 +358,11 @@ const logsDb = {
                 if (hasUpdatedAt) {
                     updateQuery += `, updated_at = CURRENT_TIMESTAMP`;
                 }
-                if (hasUser && user) {
+                // Always update user field if column exists and we have a user value
+                // If user is null but column exists, set it to null (for backward compatibility)
+                if (hasUser) {
                     updateQuery += `, user = ?`;
-                    updateParams.push(user);
+                    updateParams.push(user || null);
                 }
             } catch (e) {
                 // If we can't check, just proceed without updated_at/user

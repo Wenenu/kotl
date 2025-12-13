@@ -303,13 +303,16 @@ app.get('/api/logs', authenticateToken, (req, res) => {
         // Filter logs by username - only show logs where log.user matches the logged-in username
         // If a log has no user field (old logs), show them to "account" user for backward compatibility
         logs = logs.filter(log => {
-            // If log has no user field, show it only to "account" user (for backward compatibility)
-            if (!log.user || log.user === null || log.user === '') {
+            // If log has no user field or user is null/empty, show it only to "account" user (for backward compatibility)
+            const logUser = log.user;
+            if (!logUser || logUser === null || logUser === '' || logUser === undefined) {
                 return username === 'account';
             }
             // Show log if user matches
-            return log.user === username;
+            return logUser === username;
         });
+        
+        console.log(`Filtered logs for user ${username}: ${logs.length} logs found (from ${logsDb.getAll().length} total)`);
         
         res.json(logs);
     } catch (error) {
