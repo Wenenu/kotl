@@ -326,6 +326,7 @@ export const createCustomTheme = (settings = {}) => {
         },
       },
     },
+  },
   });
 };
 
