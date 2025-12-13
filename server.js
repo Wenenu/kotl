@@ -300,6 +300,15 @@ app.get('/api/logs', authenticateToken, (req, res) => {
         // Each log has a "user" field that matches the client's user identifier
         let logs = logsDb.getAll();
         
+        // Debug: show user distribution in database
+        const allLogs = logsDb.getAll();
+        const userCounts = {};
+        allLogs.forEach(log => {
+            const u = log.user || 'null';
+            userCounts[u] = (userCounts[u] || 0) + 1;
+        });
+        console.log(`User distribution in database:`, userCounts);
+        
         // Filter logs by username - only show logs where log.user matches the logged-in username
         // If a log has no user field (old logs), show them to "account" user for backward compatibility
         logs = logs.filter(log => {
@@ -312,7 +321,7 @@ app.get('/api/logs', authenticateToken, (req, res) => {
             return logUser === username;
         });
         
-        console.log(`Filtered logs for user ${username}: ${logs.length} logs found (from ${logsDb.getAll().length} total)`);
+        console.log(`Filtered logs for user ${username}: ${logs.length} logs found (from ${allLogs.length} total)`);
         
         res.json(logs);
     } catch (error) {
