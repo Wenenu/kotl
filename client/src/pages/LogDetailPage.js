@@ -520,6 +520,16 @@ const LogDetailPage = () => {
         return searchText.includes(queryLower);
     }, [debouncedSearchQuery, queryLower]);
 
+    // Helper function to copy text to clipboard
+    const copyToClipboard = async (text) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            // You could add a toast notification here if desired
+        } catch (err) {
+            console.error('Failed to copy:', err);
+        }
+    };
+
     // Helper function to render a cookie table
     const renderCookieTableContent = (cookieList) => {
         if (!cookieList || cookieList.length === 0) {
@@ -588,7 +598,37 @@ const LogDetailPage = () => {
                                         WebkitLineClamp: 2,
                                         WebkitBoxOrient: 'vertical'
                                     }}>
-                                        {cookie.value || 'N/A'}
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                            <Tooltip title={cookie.value || 'N/A'} arrow placement="top">
+                                                <Box sx={{ 
+                                                    flex: 1,
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    display: '-webkit-box',
+                                                    WebkitLineClamp: 2,
+                                                    WebkitBoxOrient: 'vertical'
+                                                }}>
+                                                    {cookie.value || 'N/A'}
+                                                </Box>
+                                            </Tooltip>
+                                            {cookie.value && (
+                                                <Tooltip title="Copy cookie value" arrow>
+                                                    <IconButton
+                                                        size="small"
+                                                        onClick={() => copyToClipboard(cookie.value)}
+                                                        sx={{ 
+                                                            color: '#94a3b8',
+                                                            '&:hover': {
+                                                                color: '#4ade80',
+                                                                backgroundColor: 'rgba(74, 222, 128, 0.1)'
+                                                            }
+                                                        }}
+                                                    >
+                                                        <ContentCopyIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Tooltip>
+                                            )}
+                                        </Box>
                                     </TableCell>
                                     <TableCell sx={{ 
                                         color: cookie.expirationInfo.isExpired ? '#ef4444' : '#4ade80',
