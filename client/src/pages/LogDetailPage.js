@@ -599,18 +599,16 @@ const LogDetailPage = () => {
                                         WebkitBoxOrient: 'vertical'
                                     }}>
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                            <Tooltip title={cookie.value || 'N/A'} arrow placement="top">
-                                                <Box sx={{ 
-                                                    flex: 1,
-                                                    overflow: 'hidden',
-                                                    textOverflow: 'ellipsis',
-                                                    display: '-webkit-box',
-                                                    WebkitLineClamp: 2,
-                                                    WebkitBoxOrient: 'vertical'
-                                                }}>
-                                                    {cookie.value || 'N/A'}
-                                                </Box>
-                                            </Tooltip>
+                                            <Box sx={{ 
+                                                flex: 1,
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                display: '-webkit-box',
+                                                WebkitLineClamp: 2,
+                                                WebkitBoxOrient: 'vertical'
+                                            }}>
+                                                {cookie.value || 'N/A'}
+                                            </Box>
                                             {cookie.value && (
                                                 <Tooltip title="Copy cookie value" arrow>
                                                     <IconButton
@@ -618,6 +616,7 @@ const LogDetailPage = () => {
                                                         onClick={() => copyToClipboard(cookie.value)}
                                                         sx={{ 
                                                             color: '#94a3b8',
+                                                            flexShrink: 0,
                                                             '&:hover': {
                                                                 color: '#4ade80',
                                                                 backgroundColor: 'rgba(74, 222, 128, 0.1)'
