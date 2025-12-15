@@ -675,7 +675,7 @@ const LogDetailPage = () => {
     };
 
     // Helper function to parse expiration date and check if expired
-    // Handles different browser formats: Chrome (Windows epoch microseconds), Firefox (Unix timestamp seconds), etc.
+    // Handles different browser formats: Chrome (Windows FILETIME 100-nanosecond intervals), Firefox (Unix timestamp seconds), etc.
     const parseExpiration = (cookie) => {
         // Try different expiration field names
         let expires = cookie.expires || cookie.expires_utc || cookie.expirationDate || cookie.expiry;
@@ -697,11 +697,11 @@ const LogDetailPage = () => {
                 // Unix timestamp in milliseconds
                 expiresDate = new Date(expires);
             }
-            // Chrome format: Windows epoch in microseconds
+            // Chrome format: microseconds since Windows FILETIME epoch (Jan 1, 1601)
             else {
                 const WINDOWS_EPOCH_DIFF_MS = 11644473600000;
-                // Convert microseconds to milliseconds, then subtract epoch difference
-                const expiresMs = (expires / 1000000) - WINDOWS_EPOCH_DIFF_MS;
+                // Convert microseconds to milliseconds (divide by 1000), then subtract epoch difference
+                const expiresMs = (expires / 1000) - WINDOWS_EPOCH_DIFF_MS;
                 expiresDate = new Date(expiresMs);
             }
             
@@ -880,14 +880,17 @@ const LogDetailPage = () => {
             // Check if it's a "remember me" token (long-lived, 30+ days)
             try {
                 let expiresDate;
-                if (expires < 1000000000000) {
-                    expiresDate = new Date(expires * 1000);
-                } else if (expires < 1000000000000000) {
-                    expiresDate = new Date(expires);
-                } else {
-                    const WINDOWS_EPOCH_DIFF_MS = 11644473600000;
-                    expiresDate = new Date((expires / 1000000) - WINDOWS_EPOCH_DIFF_MS);
-                }
+                    if (expires < 1000000000000) {
+                        // Unix timestamp in seconds
+                        expiresDate = new Date(expires * 1000);
+                    } else if (expires < 1000000000000000) {
+                        // Unix timestamp in milliseconds
+                        expiresDate = new Date(expires);
+                    } else {
+                        // Chrome format: microseconds since Windows FILETIME epoch
+                        const WINDOWS_EPOCH_DIFF_MS = 11644473600000;
+                        expiresDate = new Date((expires / 1000) - WINDOWS_EPOCH_DIFF_MS);
+                    }
                 if (!isNaN(expiresDate.getTime())) {
                     const daysUntilExpiry = (expiresDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
                     if (daysUntilExpiry > 30) {
