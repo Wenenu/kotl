@@ -529,7 +529,7 @@ const LogDetailPage = () => {
                 return;
             }
             
-            // Fallback to older method for browsers/contexts without Clipboard API
+            // Fallback to older method for browsers/contexts without Clipboard AP
             const textArea = document.createElement('textarea');
             textArea.value = text;
             textArea.style.position = 'fixed';
