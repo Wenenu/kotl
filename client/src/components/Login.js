@@ -86,7 +86,7 @@ function Login({ onLogin }) {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    background: 'linear-gradient(135deg, #1a1f2e 0%, #1e293b 100%)',
+                    background: 'linear-gradient(135deg, #0a0e1a 0%, #0f172a 100%)',
                 }}
             >
                 <Container maxWidth="sm">
@@ -97,31 +97,11 @@ function Login({ onLogin }) {
                             flexDirection: 'column',
                             alignItems: 'center',
                             gap: 3,
-                            backgroundColor: '#252b3b',
-                            border: '1px solid #334155',
+                            backgroundColor: '#1a1f2e',
+                            border: '1px solid #1e293b',
                             borderRadius: '16px',
                         }}
                     >
-                    <Typography
-                        variant="h4"
-                        component="h1"
-                        sx={{
-                            fontWeight: 700,
-                            color: '#4ade80',
-                            mb: 2,
-                        }}
-                    >
-                        Login
-                    </Typography>
-                    <Typography
-                        variant="body2"
-                        sx={{
-                            color: '#b0b0b0',
-                            mb: 2,
-                        }}
-                    >
-                        Enter your credentials to access the dashboard
-                    </Typography>
                     {error && (
                         <Typography
                             variant="body2"
@@ -184,9 +164,9 @@ function Login({ onLogin }) {
                                 mt: 2,
                                 py: 1.5,
                                 fontSize: '1rem',
-                                backgroundColor: '#4ade80',
+                                backgroundColor: '#1e40af',
                                 '&:hover': {
-                                    backgroundColor: '#22c55e',
+                                    backgroundColor: '#1e3a8a',
                                 },
                                 '&:disabled': {
                                     backgroundColor: '#334155',
