@@ -975,11 +975,42 @@ const LogDetailPage = () => {
         }
 
         const handleCopyPassword = (password) => {
-            navigator.clipboard.writeText(password).then(() => {
-                console.log('Password copied to clipboard');
-            }).catch(err => {
+            if (!password) {
+                console.error('No password to copy');
+                return;
+            }
+            
+            // Try modern clipboard API first
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(password).then(() => {
+                    console.log('Password copied to clipboard');
+                }).catch(err => {
+                    console.error('Failed to copy password:', err);
+                    // Fallback to legacy method
+                    fallbackCopyToClipboard(password);
+                });
+            } else {
+                // Fallback to legacy method
+                fallbackCopyToClipboard(password);
+            }
+        };
+        
+        const fallbackCopyToClipboard = (text) => {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                console.log('Password copied to clipboard (fallback method)');
+            } catch (err) {
                 console.error('Failed to copy password:', err);
-            });
+            }
+            document.body.removeChild(textArea);
         };
 
         return (
@@ -1003,8 +1034,8 @@ const LogDetailPage = () => {
                                     <TableCell sx={{ color: '#94a3b8' }}>
                                         {pwd.username || 'N/A'}
                                     </TableCell>
-                                    <TableCell sx={{ color: '#f59e0b', fontFamily: 'monospace' }}>
-                                        {pwd.password ? '•'.repeat(Math.min(pwd.password.length, 20)) : 'N/A'}
+                                    <TableCell sx={{ color: '#f59e0b', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                                        {pwd.password || 'N/A'}
                                     </TableCell>
                                     <TableCell>
                                         <Button
