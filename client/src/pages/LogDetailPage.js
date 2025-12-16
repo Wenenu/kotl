@@ -106,7 +106,7 @@ const LogDetailPage = () => {
         
         let dataArray = Array.isArray(data) ? data : [data];
         
-        // Filter data based on search query (optimized)
+        // Filter data based on search qery (optimized)
         let filteredDataArray = dataArray;
         if (debouncedSearchQuery) {
             filteredDataArray = dataArray.filter(row => {
