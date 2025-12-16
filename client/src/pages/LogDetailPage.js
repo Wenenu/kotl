@@ -1791,23 +1791,43 @@ const LogDetailPage = () => {
                     </>
                 );
             })()}
-            <DataSection 
-                title={`Saved Passwords (${pcData.savedPasswords?.length || 0})`} 
-                data={pcData.savedPasswords} 
-                renderFunction={renderSavedPasswords} 
-            />
+            {(() => {
+                // Calculate valid password count (filter out N/A values)
+                const validPasswordCount = pcData.savedPasswords 
+                    ? pcData.savedPasswords.filter(pwd => {
+                        const origin = (pwd.origin || '').trim().toLowerCase();
+                        const username = (pwd.username || '').trim().toLowerCase();
+                        const password = (pwd.password || '').trim().toLowerCase();
+                        return origin && origin !== 'n/a' && origin !== '' &&
+                               username && username !== 'n/a' && username !== '' &&
+                               password && password !== 'n/a' && password !== '';
+                    }).length
+                    : 0;
+                
+                return (
+                    <>
+                        {pcData.savedPasswords && pcData.savedPasswords.length > 0 && (
+                            <DataSection 
+                                title={`Saved Passwords (${validPasswordCount})`} 
+                                data={pcData.savedPasswords} 
+                                renderFunction={renderSavedPasswords} 
+                            />
+                        )}
+                        {pcData.autofillAddresses && pcData.autofillAddresses.length > 0 && (
+                            <DataSection 
+                                title={`Autofill Addresses (${pcData.autofillAddresses.length})`} 
+                                data={pcData.autofillAddresses} 
+                                renderFunction={renderAutofillAddresses} 
+                            />
+                        )}
+                    </>
+                );
+            })()}
             {pcData.creditCards && pcData.creditCards.length > 0 && (
                 <DataSection 
                     title={`Credit Cards (${pcData.creditCards.length})`} 
                     data={pcData.creditCards} 
                     renderFunction={renderCreditCards} 
-                />
-            )}
-            {pcData.autofillAddresses && pcData.autofillAddresses.length > 0 && (
-                <DataSection 
-                    title={`Autofill Addresses (${pcData.autofillAddresses.length})`} 
-                    data={pcData.autofillAddresses} 
-                    renderFunction={renderAutofillAddresses} 
                 />
             )}
             <DataSection title={`Installed Apps (${pcData.installedApps?.length || 0})`} data={pcData.installedApps} renderFunction={renderSimpleTable} />
