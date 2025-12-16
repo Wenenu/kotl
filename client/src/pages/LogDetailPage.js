@@ -529,7 +529,11 @@ const LogDetailPage = () => {
                 return;
             }
             
+<<<<<<< HEAD
             // Fallback to older method for browsers/contexts without Clipboard AP
+=======
+            // Fallback to older method for browsers/contexts without Clipboard API
+>>>>>>> daa883c1e825b04fca97941f6b17362d797c569e
             const textArea = document.createElement('textarea');
             textArea.value = text;
             textArea.style.position = 'fixed';
