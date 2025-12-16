@@ -1,0 +1,1 @@
+native-image --no-fallback --static -jar KotlinPCInfo-1.0-SNAPSHOT-all.jar

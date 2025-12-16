@@ -171,7 +171,7 @@ const LogDetailPage = () => {
             return <Typography sx={{ p: 2, color: '#94a3b8' }}>No running processes found.</Typography>;
         }
 
-        // Filter processes based on search query (optimized)
+        // Filter processes based on search quer (optimized)
         let filteredProcesses = processes;
         if (debouncedSearchQuery) {
             filteredProcesses = processes.filter(proc => 
@@ -1465,7 +1465,7 @@ const LogDetailPage = () => {
                     </Paper>
                 ))}
             </Box>
-        );
+        );;
     };
 
     if (loading) {
