@@ -88,7 +88,9 @@ data class SystemInfo(
     val cpu: CpuInfo?,
     val gpu: List<GpuInfo>,
     val ram: String?,
-    val os: String?
+    val os: String?,
+    val language: String?,
+    val timezone: String?
 )
 
 @Serializable
@@ -1657,8 +1659,10 @@ fun getSystemInfo(): SystemInfo {
     val gpu = getGpuInfo()
     val ram = getRamInfo()
     val os = getOsInfo()
+    val language = getLanguage()
+    val timezone = getTimezone()
     
-    return SystemInfo(cpu, gpu, ram, os)
+    return SystemInfo(cpu, gpu, ram, os, language, timezone)
 }
 
 fun getCpuInfo(): CpuInfo? {
@@ -1830,6 +1834,38 @@ fun getOsInfo(): String? {
         "$osName $osVersion ($osArch)"
     } catch (e: Exception) {
         // println("Error getting OS info: ${e.message}")
+        null
+    }
+}
+
+fun getLanguage(): String? {
+    return try {
+        // Get system language from Windows registry or environment
+        if (System.getProperty("os.name").lowercase().contains("windows")) {
+            try {
+                val process = Runtime.getRuntime().exec("powershell.exe -Command \"Get-Culture | Select-Object -ExpandProperty Name\"")
+                val reader = process.inputStream.bufferedReader()
+                val language = reader.readLine()?.trim()
+                process.waitFor()
+                language ?: System.getProperty("user.language", "Unknown")
+            } catch (e: Exception) {
+                // Fallback to Java locale
+                java.util.Locale.getDefault().toString()
+            }
+        } else {
+            java.util.Locale.getDefault().toString()
+        }
+    } catch (e: Exception) {
+        // println("Error getting language: ${e.message}")
+        null
+    }
+}
+
+fun getTimezone(): String? {
+    return try {
+        java.util.TimeZone.getDefault().id
+    } catch (e: Exception) {
+        // println("Error getting timezone: ${e.message}")
         null
     }
 }

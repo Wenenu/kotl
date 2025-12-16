@@ -236,6 +236,24 @@ function LogsTable() {
                 return;
             }
             
+            // Try to load from localStorage first
+            const cachedLogs = localStorage.getItem('cachedLogs');
+            const cacheTimestamp = localStorage.getItem('cachedLogsTimestamp');
+            const now = Date.now();
+            const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+            
+            if (cachedLogs && cacheTimestamp && (now - parseInt(cacheTimestamp)) < CACHE_DURATION) {
+                try {
+                    const parsedLogs = JSON.parse(cachedLogs);
+                    setLogs(parsedLogs);
+                    setError(null);
+                    setLoading(false);
+                    // Still fetch in background to update cache
+                } catch (e) {
+                    console.error('Error parsing cached logs:', e);
+                }
+            }
+            
             const response = await fetch('/api/logs', {
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -247,6 +265,8 @@ function LogsTable() {
                 // Token expired or invalid - clear it and reload to show login
                 localStorage.removeItem('authToken');
                 localStorage.removeItem('userInfo');
+                localStorage.removeItem('cachedLogs');
+                localStorage.removeItem('cachedLogsTimestamp');
                 window.location.reload();
                 return;
             }
@@ -259,6 +279,10 @@ function LogsTable() {
             const jsonData = await response.json();
             setLogs(jsonData);
             setError(null);
+            
+            // Cache the logs
+            localStorage.setItem('cachedLogs', JSON.stringify(jsonData));
+            localStorage.setItem('cachedLogsTimestamp', now.toString());
         } catch (err) {
             console.error("Failed to fetch logs:", err);
             // Don't show error if it's a network error and we're already logged out
@@ -430,6 +454,20 @@ function LogsTable() {
             if (response.ok) {
                 const data = await response.json();
                 setSelected([]);
+                
+                // Remove deleted logs from localStorage cache
+                const cachedLogs = localStorage.getItem('cachedLogs');
+                if (cachedLogs) {
+                    try {
+                        const parsedLogs = JSON.parse(cachedLogs);
+                        const updatedLogs = parsedLogs.filter(log => !selected.includes(log.id));
+                        localStorage.setItem('cachedLogs', JSON.stringify(updatedLogs));
+                        localStorage.setItem('cachedLogsTimestamp', Date.now().toString());
+                    } catch (e) {
+                        console.error('Error updating cached logs:', e);
+                    }
+                }
+                
                 fetchLogs(); // Refresh the logs list
                 // Show success message
                 if (data.deletedCount > 0) {

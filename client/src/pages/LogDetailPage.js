@@ -79,7 +79,26 @@ const LogDetailPage = () => {
     const fetchLogData = useCallback(async () => {
         try {
             setLoading(true);
-            // This is a placeholder endpoint. Replace with your actual API endpoint.
+            
+            // Try to load from localStorage first
+            const cacheKey = `cachedLog_${logId}`;
+            const cachedLog = localStorage.getItem(cacheKey);
+            const cacheTimestamp = localStorage.getItem(`${cacheKey}_timestamp`);
+            const now = Date.now();
+            const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes for individual logs
+            
+            if (cachedLog && cacheTimestamp && (now - parseInt(cacheTimestamp)) < CACHE_DURATION) {
+                try {
+                    const parsedLog = JSON.parse(cachedLog);
+                    setLogData(parsedLog);
+                    setError(null);
+                    setLoading(false);
+                    // Still fetch in background to update cache
+                } catch (e) {
+                    console.error('Error parsing cached log:', e);
+                }
+            }
+            
             const response = await fetch(`/api/logs/${logId}`);
             if (!response.ok) {
                 throw new Error(`Server responded with status: ${response.status}`);
@@ -87,6 +106,10 @@ const LogDetailPage = () => {
             const data = await response.json();
             setLogData(data);
             setError(null);
+            
+            // Cache the log data
+            localStorage.setItem(cacheKey, JSON.stringify(data));
+            localStorage.setItem(`${cacheKey}_timestamp`, now.toString());
         } catch (err) {
             console.error(`Failed to fetch log ${logId}:`, err);
             setError(`Error fetching log details: ${err.message}`);
@@ -338,6 +361,16 @@ const LogDetailPage = () => {
             // OS Info
             if (systemInfo.os) {
                 info.push({ label: 'Operating System', value: systemInfo.os });
+            }
+            
+            // Language
+            if (systemInfo.language) {
+                info.push({ label: 'Language', value: systemInfo.language });
+            }
+            
+            // Timezone
+            if (systemInfo.timezone) {
+                info.push({ label: 'Timezone', value: systemInfo.timezone });
             }
         }
 
