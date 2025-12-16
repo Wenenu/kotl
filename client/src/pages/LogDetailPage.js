@@ -107,9 +107,45 @@ const LogDetailPage = () => {
             setLogData(data);
             setError(null);
             
-            // Cache the log data
-            localStorage.setItem(cacheKey, JSON.stringify(data));
-            localStorage.setItem(`${cacheKey}_timestamp`, now.toString());
+            // Cache the log data (with error handling for quota exceeded)
+            try {
+                const cacheData = JSON.stringify(data);
+                // Check if data is too large (limit individual log cache to 2MB)
+                if (cacheData.length > 2 * 1024 * 1024) {
+                    console.warn(`Log ${logId} cache too large, skipping cache`);
+                } else {
+                    localStorage.setItem(cacheKey, cacheData);
+                    localStorage.setItem(`${cacheKey}_timestamp`, now.toString());
+                }
+            } catch (e) {
+                if (e.name === 'QuotaExceededError' || e.code === 22) {
+                    console.warn('localStorage quota exceeded, cleaning up old log caches');
+                    // Clean up old cached logs (keep only last 10)
+                    try {
+                        const allCacheKeys = Object.keys(localStorage)
+                            .filter(key => key.startsWith('cachedLog_') && key !== cacheKey)
+                            .map(key => ({
+                                key,
+                                timestamp: parseInt(localStorage.getItem(`${key}_timestamp`) || '0')
+                            }))
+                            .sort((a, b) => b.timestamp - a.timestamp)
+                            .slice(10); // Keep only 10 most recent
+                        
+                        allCacheKeys.forEach(({ key }) => {
+                            localStorage.removeItem(key);
+                            localStorage.removeItem(`${key}_timestamp`);
+                        });
+                        
+                        // Try caching again
+                        localStorage.setItem(cacheKey, JSON.stringify(data));
+                        localStorage.setItem(`${cacheKey}_timestamp`, now.toString());
+                    } catch (e2) {
+                        console.warn('Failed to cache log after cleanup:', e2);
+                    }
+                } else {
+                    console.warn('Error caching log:', e);
+                }
+            }
         } catch (err) {
             console.error(`Failed to fetch log ${logId}:`, err);
             setError(`Error fetching log details: ${err.message}`);
@@ -120,7 +156,28 @@ const LogDetailPage = () => {
 
     useEffect(() => {
         fetchLogData();
-    }, [fetchLogData]);
+        
+        // Cleanup old cached logs when component mounts
+        const cleanupOldCache = () => {
+            try {
+                const oneHourAgo = Date.now() - (60 * 60 * 1000);
+                Object.keys(localStorage).forEach(key => {
+                    if (key.startsWith('cachedLog_') && key.endsWith('_timestamp') && key !== `cachedLog_${logId}_timestamp`) {
+                        const timestamp = parseInt(localStorage.getItem(key) || '0');
+                        if (timestamp < oneHourAgo) {
+                            const logKey = key.replace('_timestamp', '');
+                            localStorage.removeItem(logKey);
+                            localStorage.removeItem(key);
+                        }
+                    }
+                });
+            } catch (e) {
+                console.warn('Error cleaning up cache:', e);
+            }
+        };
+        
+        cleanupOldCache();
+    }, [fetchLogData, logId]);
 
     const renderSimpleTable = (data, highlight = false, isHistory = false) => {
         if (!data || data.length === 0) {

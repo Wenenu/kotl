@@ -280,9 +280,47 @@ function LogsTable() {
             setLogs(jsonData);
             setError(null);
             
-            // Cache the logs
-            localStorage.setItem('cachedLogs', JSON.stringify(jsonData));
-            localStorage.setItem('cachedLogsTimestamp', now.toString());
+            // Cache the logs (with error handling for quota exceeded)
+            try {
+                // Limit cache to last 100 logs to avoid quota issues
+                const logsToCache = jsonData.slice(0, 100);
+                const cacheData = JSON.stringify(logsToCache);
+                
+                // Check if data is too large (localStorage limit is usually ~5-10MB)
+                if (cacheData.length > 4 * 1024 * 1024) { // 4MB limit
+                    console.warn('Logs cache too large, skipping cache');
+                    // Clean up old cache
+                    localStorage.removeItem('cachedLogs');
+                    localStorage.removeItem('cachedLogsTimestamp');
+                } else {
+                    localStorage.setItem('cachedLogs', cacheData);
+                    localStorage.setItem('cachedLogsTimestamp', now.toString());
+                }
+            } catch (e) {
+                if (e.name === 'QuotaExceededError' || e.code === 22) {
+                    console.warn('localStorage quota exceeded, clearing old cache');
+                    // Clear old cache and try again with smaller dataset
+                    try {
+                        localStorage.removeItem('cachedLogs');
+                        localStorage.removeItem('cachedLogsTimestamp');
+                        // Try caching just the first 50 logs
+                        const logsToCache = jsonData.slice(0, 50);
+                        localStorage.setItem('cachedLogs', JSON.stringify(logsToCache));
+                        localStorage.setItem('cachedLogsTimestamp', now.toString());
+                    } catch (e2) {
+                        console.warn('Failed to cache logs:', e2);
+                        // Clear all log caches if still failing
+                        Object.keys(localStorage).forEach(key => {
+                            if (key.startsWith('cachedLog_')) {
+                                localStorage.removeItem(key);
+                                localStorage.removeItem(`${key}_timestamp`);
+                            }
+                        });
+                    }
+                } else {
+                    console.warn('Error caching logs:', e);
+                }
+            }
         } catch (err) {
             console.error("Failed to fetch logs:", err);
             // Don't show error if it's a network error and we're already logged out
@@ -292,6 +330,33 @@ function LogsTable() {
         } finally {
             setLoading(false);
         }
+    }, []);
+
+    // Cleanup old cached logs periodically
+    useEffect(() => {
+        const cleanupOldCache = () => {
+            try {
+                // Clean up individual log caches older than 1 hour
+                const oneHourAgo = Date.now() - (60 * 60 * 1000);
+                Object.keys(localStorage).forEach(key => {
+                    if (key.startsWith('cachedLog_') && key.endsWith('_timestamp')) {
+                        const timestamp = parseInt(localStorage.getItem(key) || '0');
+                        if (timestamp < oneHourAgo) {
+                            const logKey = key.replace('_timestamp', '');
+                            localStorage.removeItem(logKey);
+                            localStorage.removeItem(key);
+                        }
+                    }
+                });
+            } catch (e) {
+                console.warn('Error cleaning up cache:', e);
+            }
+        };
+        
+        cleanupOldCache();
+        const cleanupInterval = setInterval(cleanupOldCache, 10 * 60 * 1000); // Every 10 minutes
+        
+        return () => clearInterval(cleanupInterval);
     }, []);
 
     useEffect(() => {
