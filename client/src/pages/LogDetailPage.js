@@ -171,7 +171,7 @@ const LogDetailPage = () => {
             return <Typography sx={{ p: 2, color: '#94a3b8' }}>No running processes found.</Typography>;
         }
 
-        // Filter processes based on search quer (optimized)
+        // Filter processes based on search query (optimized)
         let filteredProcesses = processes;
         if (debouncedSearchQuery) {
             filteredProcesses = processes.filter(proc => 
@@ -554,7 +554,7 @@ const LogDetailPage = () => {
 
     // Helper function to render a cookie table
     const renderCookieTableContent = (cookieList) => {
-        if (!cookieList || cookieList.length === 0) {
+        if (!cookieList || cookieLwherist.length === 0) {
             return <Typography sx={{ p: 2, color: '#94a3b8' }}>No cookies found.</Typography>;
         }
 
