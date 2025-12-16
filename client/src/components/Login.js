@@ -86,7 +86,7 @@ function Login({ onLogin }) {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    background: 'linear-gradient(135deg, #1a1f2e 0%, #1e293b 100%)',
+                    background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
                 }}
             >
                 <Container maxWidth="sm">
@@ -97,7 +97,7 @@ function Login({ onLogin }) {
                             flexDirection: 'column',
                             alignItems: 'center',
                             gap: 3,
-                            backgroundColor: '#252b3b',
+                            backgroundColor: '#1e293b',
                             border: '1px solid #334155',
                             borderRadius: '16px',
                         }}
@@ -133,7 +133,7 @@ function Login({ onLogin }) {
                             autoFocus
                             sx={{
                                 '& .MuiInputBase-input': {
-                                    color: '#e2e8f0',
+                                    color: '#e0e7ff',
                                 },
                                 '& .MuiInputLabel-root': {
                                     color: '#94a3b8',
@@ -148,7 +148,7 @@ function Login({ onLogin }) {
                             fullWidth
                             sx={{
                                 '& .MuiInputBase-input': {
-                                    color: '#e2e8f0',
+                                    color: '#e0e7ff',
                                 },
                                 '& .MuiInputLabel-root': {
                                     color: '#94a3b8',
@@ -164,9 +164,9 @@ function Login({ onLogin }) {
                                 mt: 2,
                                 py: 1.5,
                                 fontSize: '1rem',
-                                backgroundColor: '#4ade80',
+                                backgroundColor: '#3b82f6',
                                 '&:hover': {
-                                    backgroundColor: '#22c55e',
+                                    backgroundColor: '#2563eb',
                                 },
                                 '&:disabled': {
                                     backgroundColor: '#334155',

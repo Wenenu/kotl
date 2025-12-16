@@ -51,11 +51,11 @@ function isLightColor(hex) {
 
 export const createCustomTheme = (settings = {}) => {
   const {
-    primary = '#4ade80',
-    secondary = '#60a5fa',
-    background = '#1a1f2e',
-    paper = '#252b3b',
-    textPrimary = '#e2e8f0',
+    primary = '#3b82f6',
+    secondary = '#06b6d4',
+    background = '#0f172a',
+    paper = '#1e293b',
+    textPrimary = '#e0e7ff',
     textSecondary = '#94a3b8',
     borderRadius = 12,
     fontFamily = 'Inter',
