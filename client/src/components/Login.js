@@ -102,26 +102,6 @@ function Login({ onLogin }) {
                             borderRadius: '16px',
                         }}
                     >
-                    <Typography
-                        variant="h4"
-                        component="h1"
-                        sx={{
-                            fontWeight: 700,
-                            color: '#4ade80',
-                            mb: 2,
-                        }}
-                    >
-                        Login
-                    </Typography>
-                    <Typography
-                        variant="body2"
-                        sx={{
-                            color: '#b0b0b0',
-                            mb: 2,
-                        }}
-                    >
-                        Enter your credentials to access the dashboard
-                    </Typography>
                     {error && (
                         <Typography
                             variant="body2"
