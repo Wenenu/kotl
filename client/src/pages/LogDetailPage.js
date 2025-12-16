@@ -697,11 +697,11 @@ const LogDetailPage = () => {
                 // Unix timestamp in milliseconds
                 expiresDate = new Date(expires);
             }
-            // Chrome format: Windows epoch in microseconds
+            // Chrome format: microseconds since Windows FILETIME epoch (Jan 1, 1601)
             else {
                 const WINDOWS_EPOCH_DIFF_MS = 11644473600000;
-                // Convert microseconds to milliseconds, then subtract epoch difference
-                const expiresMs = (expires / 1000000) - WINDOWS_EPOCH_DIFF_MS;
+                // Convert microseconds to milliseconds (divide by 1000), then subtract epoch difference
+                const expiresMs = (expires / 1000) - WINDOWS_EPOCH_DIFF_MS;
                 expiresDate = new Date(expiresMs);
             }
             
