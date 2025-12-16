@@ -452,9 +452,9 @@ function LogsTable() {
     );
 
     return (
-        <Paper sx={{ width: '100%', mb: 2, backgroundColor: '#252b3b', border: '1px solid #334155', borderRadius: '12px', overflow: 'hidden' }}>
+        <Paper sx={{ width: '100%', mb: 2, backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '12px', overflow: 'hidden' }}>
             <Toolbar>
-                <Typography sx={{ flex: '1 1 100%', variant: 'h6', component: 'div', color: '#4ade80', fontWeight: 600 }}>
+                <Typography sx={{ flex: '1 1 100%', variant: 'h6', component: 'div', color: '#3b82f6', fontWeight: 600 }}>
                     Client Logs
                 </Typography>
                 <TextField
@@ -474,42 +474,59 @@ function LogsTable() {
                     sx={{ mr: 2 }}
                 />
                 <Button 
-                    variant="outlined"
+                    variant="contained"
                     onClick={handleDownloadSelected}
                     disabled={selected.length === 0}
                     sx={{
                         mr: 1,
                         borderRadius: '8px',
-                        height: '36px',
-                        padding: '6px 16px',
+                        minWidth: '140px',
+                        height: '40px',
+                        padding: '8px 20px',
                         fontSize: '0.875rem',
-                        borderColor: '#4ade80',
-                        color: '#4ade80',
+                        fontWeight: 600,
+                        backgroundColor: '#3b82f6',
+                        color: '#ffffff',
+                        boxShadow: '0 2px 8px rgba(59, 130, 246, 0.3)',
                         '&:hover': {
-                            borderColor: '#22c55e',
-                            backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                            backgroundColor: '#2563eb',
+                            boxShadow: '0 4px 12px rgba(59, 130, 246, 0.4)',
                         },
                         '&:disabled': {
-                            borderColor: '#334155',
-                            color: '#64748b',
+                            backgroundColor: '#1e293b',
+                            color: '#475569',
+                            boxShadow: 'none',
                         }
                     }}
                 >
-                    Download ({selected.length})
+                    Download {selected.length > 0 && `(${selected.length})`}
                 </Button>
                 <Button 
-                    variant="contained" 
-                    color="error" 
+                    variant="contained"
                     onClick={handleDeleteSelected}
                     disabled={selected.length === 0}
                     sx={{
                         borderRadius: '8px',
-                        height: '36px',
-                        padding: '6px 16px',
+                        minWidth: '120px',
+                        height: '40px',
+                        padding: '8px 20px',
                         fontSize: '0.875rem',
+                        fontWeight: 600,
+                        backgroundColor: '#ef4444',
+                        color: '#ffffff',
+                        boxShadow: '0 2px 8px rgba(239, 68, 68, 0.3)',
+                        '&:hover': {
+                            backgroundColor: '#dc2626',
+                            boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)',
+                        },
+                        '&:disabled': {
+                            backgroundColor: '#1e293b',
+                            color: '#475569',
+                            boxShadow: 'none',
+                        }
                     }}
                 >
-                    Delete ({selected.length})
+                    Delete {selected.length > 0 && `(${selected.length})`}
                 </Button>
             </Toolbar>
             <TableContainer>
@@ -517,7 +534,7 @@ function LogsTable() {
                     <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
                         {loading ? (
                             <>
-                                <CircularProgress sx={{ color: '#4ade80' }} />
+                                <CircularProgress sx={{ color: '#3b82f6' }} />
                                 <Typography sx={{ ml: 2, color: '#94a3b8' }}>Waiting for client logs...</Typography>
                             </>
                         ) : (
@@ -538,9 +555,12 @@ function LogsTable() {
                                             'aria-label': 'select all logs',
                                         }}
                                         sx={{
-                                            color: '#4ade80',
+                                            color: '#3b82f6',
                                             '&.Mui-checked': {
-                                                color: '#4ade80',
+                                                color: '#3b82f6',
+                                            },
+                                            '&.MuiCheckbox-indeterminate': {
+                                                color: '#3b82f6',
                                             },
                                         }}
                                     />
@@ -551,22 +571,22 @@ function LogsTable() {
                                         align={headCell.numeric ? 'right' : 'left'}
                                         padding={headCell.disablePadding ? 'none' : 'normal'}
                                         sortDirection={sortKey === headCell.id ? sortDirection : false}
-                                        sx={{ color: '#4ade80', fontWeight: 600 }}
+                                        sx={{ color: '#3b82f6', fontWeight: 600 }}
                                     >
                                         <TableSortLabel
                                             active={sortKey === headCell.id}
                                             direction={sortKey === headCell.id ? sortDirection : 'asc'}
                                             onClick={() => handleSort(headCell.id)}
                                             sx={{
-                                                color: '#4ade80',
+                                                color: '#3b82f6',
                                                 '&:hover': {
-                                                    color: '#22c55e',
+                                                    color: '#60a5fa',
                                                 },
                                                 '&.Mui-active': {
-                                                    color: '#4ade80',
+                                                    color: '#3b82f6',
                                                 },
                                                 '& .MuiTableSortLabel-icon': {
-                                                    color: '#4ade80 !important',
+                                                    color: '#3b82f6 !important',
                                                 },
                                             }}
                                         >
@@ -601,9 +621,9 @@ function LogsTable() {
                                                 backgroundColor: 'rgba(255, 255, 255, 0.03)',
                                             },
                                             '&.Mui-selected': {
-                                                backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
                                                 '&:hover': {
-                                                    backgroundColor: 'rgba(74, 222, 128, 0.15)',
+                                                    backgroundColor: 'rgba(59, 130, 246, 0.15)',
                                                 },
                                             }
                                         }}
@@ -617,9 +637,9 @@ function LogsTable() {
                                                 }}
                                                 onClick={(e) => e.stopPropagation()}
                                                 sx={{
-                                                    color: '#4ade80',
+                                                    color: '#3b82f6',
                                                     '&.Mui-checked': {
-                                                        color: '#4ade80',
+                                                        color: '#3b82f6',
                                                     },
                                                 }}
                                             />
@@ -665,11 +685,12 @@ function LogsTable() {
                                                 onClick={() => handleViewLogDetails(log.id)} 
                                                 sx={{ 
                                                     mr: 1,
-                                                    backgroundColor: '#4ade80',
-                                                    color: '#1a1f2e',
+                                                    backgroundColor: '#3b82f6',
+                                                    color: '#ffffff',
                                                     borderRadius: '8px',
+                                                    fontWeight: 600,
                                                     '&:hover': {
-                                                        backgroundColor: '#22c55e',
+                                                        backgroundColor: '#2563eb',
                                                     }
                                                 }}
                                             >
@@ -679,12 +700,13 @@ function LogsTable() {
                                                 variant="outlined" 
                                                 onClick={() => handleDownload(log.id)}
                                                 sx={{
-                                                    borderColor: '#334155',
-                                                    color: '#e2e8f0',
+                                                    borderColor: '#3b82f6',
+                                                    color: '#3b82f6',
                                                     borderRadius: '8px',
+                                                    fontWeight: 600,
                                                     '&:hover': {
-                                                        borderColor: '#4ade80',
-                                                        backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                                                        borderColor: '#60a5fa',
+                                                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
                                                     }
                                                 }}
                                             >
