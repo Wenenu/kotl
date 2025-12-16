@@ -1465,7 +1465,7 @@ const LogDetailPage = () => {
                     </Paper>
                 ))}
             </Box>
-        );
+        );;
     };
 
     if (loading) {
