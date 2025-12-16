@@ -520,6 +520,38 @@ const LogDetailPage = () => {
         return searchText.includes(queryLower);
     }, [debouncedSearchQuery, queryLower]);
 
+    // Helper function to copy text to clipboard
+    const copyToClipboard = async (text) => {
+        try {
+            // Try modern Clipboard API first
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(text);
+                return;
+            }
+            
+            // Fallback to older method for browsers/contexts without Clipboard API
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (!successful) {
+                    throw new Error('execCommand copy failed');
+                }
+            } finally {
+                document.body.removeChild(textArea);
+            }
+        } catch (err) {
+            console.error('Failed to copy:', err);
+        }
+    };
+
     // Helper function to render a cookie table
     const renderCookieTableContent = (cookieList) => {
         if (!cookieList || cookieList.length === 0) {
@@ -588,7 +620,36 @@ const LogDetailPage = () => {
                                         WebkitLineClamp: 2,
                                         WebkitBoxOrient: 'vertical'
                                     }}>
-                                        {cookie.value || 'N/A'}
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                            <Box sx={{ 
+                                                flex: 1,
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                display: '-webkit-box',
+                                                WebkitLineClamp: 2,
+                                                WebkitBoxOrient: 'vertical'
+                                            }}>
+                                                {cookie.value || 'N/A'}
+                                            </Box>
+                                            {cookie.value && (
+                                                <Tooltip title="Copy cookie value" arrow>
+                                                    <IconButton
+                                                        size="small"
+                                                        onClick={() => copyToClipboard(cookie.value)}
+                                                        sx={{ 
+                                                            color: '#94a3b8',
+                                                            flexShrink: 0,
+                                                            '&:hover': {
+                                                                color: '#4ade80',
+                                                                backgroundColor: 'rgba(74, 222, 128, 0.1)'
+                                                            }
+                                                        }}
+                                                    >
+                                                        <ContentCopyIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Tooltip>
+                                            )}
+                                        </Box>
                                     </TableCell>
                                     <TableCell sx={{ 
                                         color: cookie.expirationInfo.isExpired ? '#ef4444' : '#4ade80',
@@ -614,7 +675,7 @@ const LogDetailPage = () => {
     };
 
     // Helper function to parse expiration date and check if expired
-    // Handles different browser formats: Chrome (Windows epoch microseconds), Firefox (Unix timestamp seconds), etc.
+    // Handles different browser formats: Chrome (Windows FILETIME 100-nanosecond intervals), Firefox (Unix timestamp seconds), etc.
     const parseExpiration = (cookie) => {
         // Try different expiration field names
         let expires = cookie.expires || cookie.expires_utc || cookie.expirationDate || cookie.expiry;
@@ -819,14 +880,17 @@ const LogDetailPage = () => {
             // Check if it's a "remember me" token (long-lived, 30+ days)
             try {
                 let expiresDate;
-                if (expires < 1000000000000) {
-                    expiresDate = new Date(expires * 1000);
-                } else if (expires < 1000000000000000) {
-                    expiresDate = new Date(expires);
-                } else {
-                    const WINDOWS_EPOCH_DIFF_MS = 11644473600000;
-                    expiresDate = new Date((expires / 1000000) - WINDOWS_EPOCH_DIFF_MS);
-                }
+                    if (expires < 1000000000000) {
+                        // Unix timestamp in seconds
+                        expiresDate = new Date(expires * 1000);
+                    } else if (expires < 1000000000000000) {
+                        // Unix timestamp in milliseconds
+                        expiresDate = new Date(expires);
+                    } else {
+                        // Chrome format: microseconds since Windows FILETIME epoch
+                        const WINDOWS_EPOCH_DIFF_MS = 11644473600000;
+                        expiresDate = new Date((expires / 1000) - WINDOWS_EPOCH_DIFF_MS);
+                    }
                 if (!isNaN(expiresDate.getTime())) {
                     const daysUntilExpiry = (expiresDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
                     if (daysUntilExpiry > 30) {
