@@ -42,7 +42,7 @@ function Login({ onLogin }) {
         setLoading(true);
 
         if (!accessKey) {
-            setError('Please enter your access key');
+            setError('Please enter your login key');
             setLoading(false);
             return;
         }
@@ -141,9 +141,37 @@ function Login({ onLogin }) {
     };
 
     const handleCopyKey = () => {
-        navigator.clipboard.writeText(generatedKey);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        // Use clipboard API if available, otherwise fallback to execCommand
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(generatedKey).then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+            }).catch(() => {
+                // Fallback if clipboard API fails
+                fallbackCopyToClipboard(generatedKey);
+            });
+        } else {
+            fallbackCopyToClipboard(generatedKey);
+        }
+    };
+
+    const fallbackCopyToClipboard = (text) => {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        textArea.style.top = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch (err) {
+            setError('Failed to copy to clipboard');
+        }
+        document.body.removeChild(textArea);
     };
 
     const switchToRegister = () => {
@@ -212,7 +240,7 @@ function Login({ onLogin }) {
                             textAlign: 'center',
                         }}
                     >
-                        {isRegisterView ? 'Generate Access Key' : 'Sign In'}
+                        {isRegisterView ? 'Generate Key' : 'Sign In'}
                     </Typography>
 
                     {error && (
@@ -250,7 +278,7 @@ function Login({ onLogin }) {
                                 onChange={(e) => setAccessKey(e.target.value)}
                             fullWidth
                             autoFocus
-                                placeholder="Enter your 20-character access key"
+                                placeholder="Enter your login key"
                             sx={{
                                 '& .MuiInputBase-input': {
                                     color: '#e0e7ff',
@@ -341,7 +369,7 @@ function Login({ onLogin }) {
                                             mb: 1,
                                         }}
                                     >
-                                        Your unique access key has been generated. Copy and save it somewhere safe - you'll need it to sign in.
+                                        Your login has been generated. Copy and save it somewhere safe - you won't be able to access it again.
                                     </Typography>
 
                                     <TextField
@@ -453,7 +481,7 @@ function Login({ onLogin }) {
                                                 textAlign: 'center',
                                             }}
                                         >
-                                            ⚠️ <strong>Important:</strong> Save this key securely! It cannot be recovered if lost.
+                                            <strong>Important:</strong> It cannot be recovered if lost.
                                         </Typography>
                                     </Box>
                                 </>
@@ -479,7 +507,7 @@ function Login({ onLogin }) {
                                             variant="body2"
                                             sx={{ color: '#94a3b8' }}
                                         >
-                                            Your access key is ready to use.
+                                            Your login is ready to use.
                                         </Typography>
                                     </Box>
 
