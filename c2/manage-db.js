@@ -1,16 +1,14 @@
 #!/usr/bin/env node
 
 /**
- * Database Management Script
+ * Database Management Script - Key-Based Authentication
  * 
  * Usage:
  *   node manage-db.js list-users
- *   node manage-db.js create-user <username> <password>
- *   node manage-db.js change-password <username> <new-password>
- *   node manage-db.js delete-user <username>
- *   node manage-db.js deactivate-user <username>
- *   node manage-db.js activate-user <username>
- *   node manage-db.js reset-password <username> <new-password>
+ *   node manage-db.js create-key              # Generate a new access key
+ *   node manage-db.js delete-user <key>       # Delete by access key
+ *   node manage-db.js deactivate-user <key>   # Deactivate by access key
+ *   node manage-db.js activate-user <key>     # Activate by access key
  */
 
 require('dotenv').config();
@@ -29,6 +27,16 @@ function question(prompt) {
     });
 }
 
+// Generate a random 20-character key with uppercase and lowercase letters
+function generateAccessKey() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+    let key = '';
+    for (let i = 0; i < 20; i++) {
+        key += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return key;
+}
+
 async function listUsers() {
     console.log('\n=== Users in Database ===\n');
     const users = userDb.getAll();
@@ -39,7 +47,11 @@ async function listUsers() {
     }
     
     users.forEach((user, index) => {
-        console.log(`${index + 1}. Username: ${user.username}`);
+        // Show truncated key for security (first 8 chars)
+        const keyPreview = user.username.length === 20 
+            ? user.username.substring(0, 8) + '...' 
+            : user.username;
+        console.log(`${index + 1}. Key: ${keyPreview}`);
         console.log(`   ID: ${user.id}`);
         console.log(`   Created: ${user.created_at}`);
         console.log(`   Last Login: ${user.last_login || 'Never'}`);
@@ -48,139 +60,101 @@ async function listUsers() {
     });
 }
 
-async function createUser(username, password) {
-    if (!username || !password) {
-        console.error('Error: Username and password are required');
-        console.log('Usage: node manage-db.js create-user <username> <password>');
-        process.exit(1);
-    }
-    
-    if (password.length < 6) {
-        console.error('Error: Password must be at least 6 characters long');
-        process.exit(1);
-    }
-    
+async function createKey() {
     try {
-        // Check if user already exists
-        const existing = userDb.findByUsername(username);
-        if (existing) {
-            console.error(`Error: User '${username}' already exists`);
-            process.exit(1);
-        }
+        const key = generateAccessKey();
         
-        // Hash password with bcrypt (automatically includes salt)
-        // bcrypt uses a cost factor of 10 rounds (configurable)
-        const passwordHash = bcrypt.hashSync(password, 10);
+        // Hash the key with bcrypt
+        const keyHash = bcrypt.hashSync(key, 10);
         
-        // Create user
-        const newUser = userDb.create(username, passwordHash);
+        // Create user with key as username
+        const newUser = userDb.create(key, keyHash);
         
-        console.log(`\n✓ User '${username}' created successfully!`);
+        console.log(`\n✓ New access key created successfully!`);
         console.log(`  User ID: ${newUser.id}`);
-        console.log(`  Password: Hashed with bcrypt (salt included automatically)\n`);
+        console.log(`\n  ╔════════════════════════════════════════╗`);
+        console.log(`  ║  YOUR ACCESS KEY (SAVE THIS!):         ║`);
+        console.log(`  ║                                        ║`);
+        console.log(`  ║  ${key}  ║`);
+        console.log(`  ║                                        ║`);
+        console.log(`  ╚════════════════════════════════════════╝`);
+        console.log(`\n  ⚠️  This key cannot be recovered if lost!`);
+        console.log(`  ⚠️  Store it securely!\n`);
     } catch (error) {
         if (error.message === 'Username already exists') {
-            console.error(`Error: User '${username}' already exists`);
+            // Extremely rare - regenerate
+            console.log('Key collision detected, regenerating...');
+            await createKey();
         } else {
-            console.error('Error creating user:', error.message);
+            console.error('Error creating key:', error.message);
+            process.exit(1);
         }
-        process.exit(1);
     }
 }
 
-async function changePassword(username, newPassword) {
-    if (!username || !newPassword) {
-        console.error('Error: Username and new password are required');
-        console.log('Usage: node manage-db.js change-password <username> <new-password>');
+async function deleteUser(key) {
+    if (!key) {
+        console.error('Error: Access key is required');
+        console.log('Usage: node manage-db.js delete-user <access-key>');
         process.exit(1);
     }
     
-    if (newPassword.length < 6) {
-        console.error('Error: Password must be at least 6 characters long');
-        process.exit(1);
-    }
-    
-    const user = userDb.findByUsername(username);
+    const user = userDb.findByUsername(key);
     if (!user) {
-        console.error(`Error: User '${username}' not found`);
+        console.error(`Error: User with that access key not found`);
         process.exit(1);
     }
     
-    // Hash new password with bcrypt
-    const passwordHash = bcrypt.hashSync(newPassword, 10);
-    userDb.updatePassword(username, passwordHash);
-    
-    console.log(`\n✓ Password changed successfully for user '${username}'\n`);
-}
-
-async function resetPassword(username, newPassword) {
-    // Same as changePassword but without requiring old password
-    await changePassword(username, newPassword);
-}
-
-async function deleteUser(username) {
-    if (!username) {
-        console.error('Error: Username is required');
-        console.log('Usage: node manage-db.js delete-user <username>');
-        process.exit(1);
-    }
-    
-    const user = userDb.findByUsername(username);
-    if (!user) {
-        console.error(`Error: User '${username}' not found`);
-        process.exit(1);
-    }
-    
-    const answer = await question(`Are you sure you want to DELETE user '${username}'? (yes/no): `);
+    const answer = await question(`Are you sure you want to DELETE this user? (yes/no): `);
     if (answer.toLowerCase() !== 'yes') {
         console.log('Operation cancelled.');
         rl.close();
         return;
     }
     
-    // Note: We need to add a delete method to userDb
     const { db } = require('./database');
-    db.prepare('DELETE FROM users WHERE username = ?').run(username);
+    db.prepare('DELETE FROM users WHERE username = ?').run(key);
     
-    console.log(`\n✓ User '${username}' deleted successfully\n`);
+    console.log(`\n✓ User deleted successfully\n`);
 }
 
-async function deactivateUser(username) {
-    if (!username) {
-        console.error('Error: Username is required');
-        console.log('Usage: node manage-db.js deactivate-user <username>');
+async function deactivateUser(key) {
+    if (!key) {
+        console.error('Error: Access key is required');
+        console.log('Usage: node manage-db.js deactivate-user <access-key>');
         process.exit(1);
     }
     
-    const user = userDb.findByUsername(username);
+    const user = userDb.findByUsername(key);
     if (!user) {
-        console.error(`Error: User '${username}' not found`);
+        console.error(`Error: User with that access key not found`);
         process.exit(1);
     }
     
     const { db } = require('./database');
-    db.prepare('UPDATE users SET is_active = 0 WHERE username = ?').run(username);
+    db.prepare('UPDATE users SET is_active = 0 WHERE username = ?').run(key);
     
-    console.log(`\n✓ User '${username}' deactivated successfully\n`);
+    console.log(`\n✓ User deactivated successfully\n`);
 }
 
-async function activateUser(username) {
-    if (!username) {
-        console.error('Error: Username is required');
-        console.log('Usage: node manage-db.js activate-user <username>');
+async function activateUser(key) {
+    if (!key) {
+        console.error('Error: Access key is required');
+        console.log('Usage: node manage-db.js activate-user <access-key>');
         process.exit(1);
     }
     
-    const user = userDb.findByUsername(username);
-    if (!user) {
-        console.error(`Error: User '${username}' not found`);
-        process.exit(1);
-    }
-    
+    // For activation, we might need to check inactive users too
     const { db } = require('./database');
-    db.prepare('UPDATE users SET is_active = 1 WHERE username = ?').run(username);
+    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(key);
+    if (!user) {
+        console.error(`Error: User with that access key not found`);
+        process.exit(1);
+    }
     
-    console.log(`\n✓ User '${username}' activated successfully\n`);
+    db.prepare('UPDATE users SET is_active = 1 WHERE username = ?').run(key);
+    
+    console.log(`\n✓ User activated successfully\n`);
 }
 
 // Main command handler
@@ -194,16 +168,8 @@ async function main() {
                 await listUsers();
                 break;
                 
-            case 'create-user':
-                await createUser(args[0], args[1]);
-                break;
-                
-            case 'change-password':
-                await changePassword(args[0], args[1]);
-                break;
-                
-            case 'reset-password':
-                await resetPassword(args[0], args[1]);
+            case 'create-key':
+                await createKey();
                 break;
                 
             case 'delete-user':
@@ -220,30 +186,28 @@ async function main() {
                 
             default:
                 console.log(`
-Database Management Tool
+Database Management Tool (Key-Based Authentication)
 
 Usage:
   node manage-db.js <command> [arguments]
 
 Commands:
   list-users                    List all users in the database
-  create-user <user> <pass>    Create a new user with hashed password
-  change-password <user> <pass> Change a user's password
-  reset-password <user> <pass>  Reset a user's password (admin only)
-  delete-user <user>            Delete a user from the database
-  deactivate-user <user>        Deactivate a user account
-  activate-user <user>          Activate a user account
+  create-key                    Generate a new access key
+  delete-user <key>             Delete a user by their access key
+  deactivate-user <key>         Deactivate a user account
+  activate-user <key>           Activate a user account
 
-Password Security:
-  - All passwords are hashed using bcrypt with 10 salt rounds
-  - Each password gets a unique salt automatically
-  - Passwords must be at least 6 characters long
+Key Security:
+  - Access keys are 20 characters (uppercase/lowercase letters)
+  - Keys are hashed with bcrypt before storage
+  - Keys cannot be recovered if lost - create a new one instead
 
 Examples:
   node manage-db.js list-users
-  node manage-db.js create-user admin securepassword123
-  node manage-db.js change-password admin newpassword456
-  node manage-db.js deactivate-user olduser
+  node manage-db.js create-key
+  node manage-db.js delete-user AbCdEfGhIjKlMnOpQrSt
+  node manage-db.js deactivate-user AbCdEfGhIjKlMnOpQrSt
                 `);
                 process.exit(0);
         }
@@ -256,4 +220,3 @@ Examples:
 }
 
 main();
-
