@@ -1,0 +1,148 @@
+crypto Keywords: crypto, крипта, cripto, krypto, kripto
+Edit
+Remove
+cryptocurrency Keywords: cryptocurrency, криптовалюта, criptomoneda, cryptomonnaie, kryptowährung, criptomoeda, kripto
+Edit
+Remove
+seed Keywords: seed, сид, semilla, graines, semente, tohum
+Edit
+Remove
+passphrase Keywords: passphrase, парольная_фраза, frase_de_contraseña, phrase_de_passe, frase_de_senha, parola_cümlesi
+Edit
+Remove
+password Keywords: password, пароль, contraseña, motdepasse, passwort, senha, şifre
+Edit
+Remove
+wallet Keywords: wallet, кошелек, billetera, portefeuille, brieftasche, carteira, cüzdan
+Edit
+Remove
+wallets Keywords: wallets, кошельки, billeteras, portefeuilles, brieftaschen, carteiras, cüzdanlar
+Edit
+Remove
+wallet_backup Keywords: wallet_backup, резервный_кошелек, respaldo_billetera, sauvegarde_portefeuille, backup_carteira, cüzdan_yedeği
+Edit
+Remove
+wallet_dat Keywords: wallet.dat
+Edit
+Remove
+wallet_recovery Keywords: wallet-recovery, восстановление_кошелька, recuperación_billetera, récupération_portefeuille, wallet-wiederherstellung, recuperação_carteira, cüzdan_kurtarma
+Edit
+Remove
+recovery Keywords: recovery, восстановление, recuperación, récupération, wiederherstellung, recuperação, kurtarma
+Edit
+Remove
+mnemonic Keywords: mnemonic, мнемоническая, neumotécnico, mnemonique, mnemonisch, mnemônico, mnemonik
+Edit
+Remove
+recovery_phrase Keywords: recovery_phrase, фраза_восстановления, frase_de_recuperación, phrase_de_récupération, wiederherstellungsphrase, frase_de_recuperação, kurtarma_ifadesi
+Edit
+Remove
+12words Keywords: 12words, 12_слов, 12_palabras, 12_mots, 12_wörter, 12_palavras, 12_kelime
+Edit
+Remove
+24words Keywords: 24words, 24_слова, 24_palabras, 24_mots, 24_wörter, 24_palavras, 24_kelime
+Edit
+Remove
+phrase Keywords: phrase, фраза, frase, phrase, satz, frase, ifade
+Edit
+Remove
+keyfile Keywords: keyfile, файл_ключа, archivo_de_clave, fichier_clef, schlüsseldatei, arquivo_de_chave, anahtar_dosyası
+Edit
+Remove
+backup Keywords: backup, резервная_копия, copia_de_seguridad, sauvegarde, sicherung, yedek
+Edit
+Remove
+keystore Keywords: keystore, хранилище_ключей, almacén_de_claves, magasin_de_clés, schlüsselarchiv, armazenamento_de_chaves, anahtar_deposu
+Edit
+Remove
+keystore_json Keywords: keystore.json
+Edit
+Remove
+btc Keywords: btc, bitcoin, биткоин
+Edit
+Remove
+ltc Keywords: ltc, litecoin, лайткоин
+Edit
+Remove
+xmr Keywords: xmr, monero, монеро
+Edit
+Remove
+eth Keywords: ethereum, эфириум
+Edit
+Remove
+bnb Keywords: binance, бинанс
+Edit
+Remove
+trx Keywords: tron, трон
+Edit
+Remove
+sol Keywords: solana
+Edit
+Remove
+doge Keywords: doge, dogecoin, догекоин
+Edit
+Remove
+dash Keywords: dash
+Edit
+Remove
+zec Keywords: zcash
+Edit
+Remove
+ada Keywords: cardano, кардано
+Edit
+Remove
+coinbase Keywords: coinbase, коинбейс
+Edit
+Remove
+kraken Keywords: kraken, кракен
+Edit
+Remove
+kucoin Keywords: kucoin, кукоин
+Edit
+Remove
+exodus Keywords: exodus, эксодус
+Edit
+Remove
+atomic Keywords: atomic, атомик
+Edit
+Remove
+trust Keywords: trust, траст
+Edit
+Remove
+trustwallet Keywords: trustwallet, трастваллет
+Edit
+Remove
+metamask Keywords: metamask, метамаск
+Edit
+Remove
+ledger Keywords: ledger, леджер
+Edit
+Remove
+trezor Keywords: trezor, трезор
+Edit
+Remove
+phantom Keywords: phantom, фантом
+Edit
+Remove
+electrum Keywords: electrum, электрум
+Edit
+Remove
+mycelium Keywords: mycelium, майселиум
+Edit
+Remove
+bitpay Keywords: bitpay, битпей
+Edit
+Remove
+blockchain Keywords: blockchain, блокчейн
+Edit
+Remove
+bitfinex Keywords: bitfinex, битфинекс
+Edit
+Remove
+crypto_com Keywords: crypto.com
+Edit
+Remove
+nexo Keywords: nexo, нексо
+Edit
+Remove
+private_key Keywords: private, приватный, privado, privé, privat, özel

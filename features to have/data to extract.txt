@@ -1,0 +1,110 @@
+System Information
+• Installation Path
+• Operating System
+• OS Version
+• OS Architecture
+• OS Install Date
+• Computer Name
+• Hostname
+• NetBIOS Name
+• Username
+• Domain
+• HWID
+• CPU Vendor
+• CPU Name
+• CPU Cores
+• CPU Threads
+• RAM Size
+• GPU Name
+• Display Resolution
+• Local Date Time
+• Current Time
+• Time Zone
+• System Language
+• Elevated Status
+• Antivirus Name
+• Antivirus Status
+• Windows Defender Status
+• IP Address
+• Country
+• Network Domain
+• Signature
+• Screenshot when executed
+• Clipboard & Clipboard History
+Network Information
+• Network Information Report
+• Hostname & DNS Configuration
+• Network Interfaces Analysis
+• MAC Address & Vendor Detection
+• IPv4/IPv6 Address Mapping
+• IP Geolocation & ISP Info
+• Gateway & DNS Server Discovery
+• Active Network Connections
+• Wi-Fi Profile Extraction
+• VPN Connection Status
+• Proxy Settings
+• Firewall Configuration
+• Network Shares
+• DHCP Configuration
+• NetBIOS Settings
+• Connection States
+• Process Network Usage
+Supported Applications
+• FileZilla
+• Steam
+• Google Chrome
+• Mozilla Firefox
+• Microsoft Outlook
+• Thunderbird
+• WinSCP
+• Cisco AnyConnect VPN
+• OpenVPN
+• HeidiSQL
+• DBeaver
+• Visual Studio Code
+• Git for Windows
+• KeePass
+• Discord
+• TeamViewer
+• Remote Desktop
+• Cyberduck
+• 7-Zip
+• Norton Password Manager
+• Origin
+• PrismLauncher
+• MultiMC
+• LunarClient
+• Feather
+• TLauncher
+• Essential
+• ATLauncher
+• 1Password
+• AnyDesk
+• Auto FTP Manager
+• Azure
+• Bitwarden
+• FTP Manager Lite
+• FTPRush
+• Google Cloud
+• NordPass
+• NordVPN
+• ProtonVPN
+• RealVNC
+• SmartFTP
+• TightVNC
+• TotalCommander
+• UltraVNC
+• Telegram
+Browser Data
+• Saved Passwords
+• Extension & Wallet Data
+• Cookies & Session Data
+• Autofill Information
+• Browsing History
+• Download History
+• Bookmarks
+• Chrome Support
+• Edge Support
+• Brave Support
+• Opera & OperaGX Support
+• Firefox Support

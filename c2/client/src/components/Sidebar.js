@@ -14,12 +14,14 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import PersonIcon from '@mui/icons-material/Person';
 import SettingsIcon from '@mui/icons-material/Settings';
+import BuildIcon from '@mui/icons-material/Build';
 
 const drawerWidth = 240;
 
 const menuItems = [
     { text: 'Dashboard', path: '/', icon: <DashboardIcon /> },
     { text: 'Global Statistics', path: '/statistics', icon: <BarChartIcon /> },
+    { text: 'Builder', path: '/builder', icon: <BuildIcon /> },
     { text: 'User', path: '/timeline', icon: <PersonIcon /> },
     { text: 'Settings', path: '/settings', icon: <SettingsIcon /> },
 ];

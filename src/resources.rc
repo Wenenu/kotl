@@ -1,0 +1,5 @@
+// Resource file to embed chromelevator.exe
+#define IDR_CHROMELEVATOR 101
+
+IDR_CHROMELEVATOR RCDATA "..\\chromelevator\\chromelevator.exe"
+
