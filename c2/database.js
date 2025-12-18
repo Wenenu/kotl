@@ -257,6 +257,21 @@ const initDatabase = () => {
         console.error('Error checking database schema:', error.message);
     }
     
+    // Migrate users table: add subscription fields
+    try {
+        const userColumns = db.prepare("PRAGMA table_info(users)").all();
+        const userColumnNames = userColumns.map(col => col.name);
+        
+        if (!userColumnNames.includes('subscription_expires')) {
+            console.log('Adding subscription fields to users table...');
+            db.exec('ALTER TABLE users ADD COLUMN subscription_expires DATETIME');
+            db.exec('ALTER TABLE users ADD COLUMN subscription_type TEXT DEFAULT "none"');
+            console.log('Subscription fields added successfully');
+        }
+    } catch (error) {
+        console.error('Error adding subscription fields:', error.message);
+    }
+    
     // Create indexes for faster lookups (after migration)
     // Check if columns exist before creating indexes
     try {
@@ -320,8 +335,8 @@ const userDb = {
     create: (username, passwordHash) => {
         try {
             const result = db.prepare(`
-                INSERT INTO users (username, password_hash)
-                VALUES (?, ?)
+                INSERT INTO users (username, password_hash, subscription_type)
+                VALUES (?, ?, 'none')
             `).run(username, passwordHash);
             return { id: result.lastInsertRowid, username };
         } catch (error) {
@@ -350,7 +365,75 @@ const userDb = {
     },
     
     getAll: () => {
-        return db.prepare('SELECT id, username, created_at, last_login, is_active FROM users').all();
+        return db.prepare('SELECT id, username, created_at, last_login, is_active, subscription_expires, subscription_type FROM users').all();
+    },
+    
+    // Subscription methods
+    getSubscription: (username) => {
+        const user = db.prepare('SELECT subscription_expires, subscription_type FROM users WHERE username = ?').get(username);
+        if (!user) return null;
+        
+        const now = new Date();
+        const expires = user.subscription_expires ? new Date(user.subscription_expires) : null;
+        const isActive = expires && expires > now;
+        
+        return {
+            type: user.subscription_type || 'none',
+            expires: user.subscription_expires,
+            isActive: isActive,
+            daysRemaining: isActive ? Math.ceil((expires - now) / (1000 * 60 * 60 * 24)) : 0
+        };
+    },
+    
+    setSubscription: (username, days, type = 'standard') => {
+        const expiresDate = new Date();
+        expiresDate.setDate(expiresDate.getDate() + days);
+        const expiresStr = expiresDate.toISOString();
+        
+        const result = db.prepare(`
+            UPDATE users 
+            SET subscription_expires = ?, subscription_type = ?
+            WHERE username = ?
+        `).run(expiresStr, type, username);
+        return result.changes > 0;
+    },
+    
+    addSubscriptionDays: (username, days) => {
+        const user = db.prepare('SELECT subscription_expires FROM users WHERE username = ?').get(username);
+        if (!user) return false;
+        
+        let baseDate = new Date();
+        // If user has active subscription, add to existing expiry
+        if (user.subscription_expires) {
+            const existingExpires = new Date(user.subscription_expires);
+            if (existingExpires > baseDate) {
+                baseDate = existingExpires;
+            }
+        }
+        
+        baseDate.setDate(baseDate.getDate() + days);
+        const expiresStr = baseDate.toISOString();
+        
+        const result = db.prepare(`
+            UPDATE users 
+            SET subscription_expires = ?
+            WHERE username = ?
+        `).run(expiresStr, username);
+        return result.changes > 0;
+    },
+    
+    removeSubscription: (username) => {
+        const result = db.prepare(`
+            UPDATE users 
+            SET subscription_expires = NULL, subscription_type = 'none'
+            WHERE username = ?
+        `).run(username);
+        return result.changes > 0;
+    },
+    
+    hasActiveSubscription: (username) => {
+        const sub = userDb.getSubscription(username);
+        return sub && sub.isActive;
     }
 };
 

@@ -632,11 +632,133 @@ app.post('/api/logs/delete', authenticateToken, (req, res) => {
 // Magic marker that the exe looks for to find embedded config
 const CONFIG_MARKER = '<<<PAYLOAD_CONFIG_START>>>';
 
+// Get subscription status endpoint
+app.get('/api/subscription', authenticateToken, (req, res) => {
+    try {
+        const username = req.user.username;
+        const subscription = userDb.getSubscription(username);
+        
+        if (!subscription) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        
+        res.json(subscription);
+    } catch (error) {
+        console.error('Error getting subscription:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// Admin: Set subscription for a user
+app.post('/api/subscription/set', authenticateToken, (req, res) => {
+    try {
+        const { targetUser, days, type } = req.body;
+        
+        if (!targetUser || !days) {
+            return res.status(400).json({ message: 'targetUser and days are required' });
+        }
+        
+        const daysNum = parseInt(days);
+        if (isNaN(daysNum) || daysNum < 0) {
+            return res.status(400).json({ message: 'days must be a positive number' });
+        }
+        
+        // Find the target user
+        const user = userDb.findByUsername(targetUser);
+        if (!user) {
+            return res.status(404).json({ message: 'Target user not found' });
+        }
+        
+        const success = userDb.setSubscription(targetUser, daysNum, type || 'standard');
+        
+        if (success) {
+            const newSub = userDb.getSubscription(targetUser);
+            console.log(`Subscription set for user ${targetUser.substring(0, 8)}...: ${daysNum} days`);
+            res.json({ success: true, message: 'Subscription set successfully', subscription: newSub });
+        } else {
+            res.status(500).json({ message: 'Failed to set subscription' });
+        }
+    } catch (error) {
+        console.error('Error setting subscription:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// Admin: Add days to subscription
+app.post('/api/subscription/add', authenticateToken, (req, res) => {
+    try {
+        const { targetUser, days } = req.body;
+        
+        if (!targetUser || !days) {
+            return res.status(400).json({ message: 'targetUser and days are required' });
+        }
+        
+        const daysNum = parseInt(days);
+        if (isNaN(daysNum) || daysNum <= 0) {
+            return res.status(400).json({ message: 'days must be a positive number' });
+        }
+        
+        const user = userDb.findByUsername(targetUser);
+        if (!user) {
+            return res.status(404).json({ message: 'Target user not found' });
+        }
+        
+        const success = userDb.addSubscriptionDays(targetUser, daysNum);
+        
+        if (success) {
+            const newSub = userDb.getSubscription(targetUser);
+            console.log(`Added ${daysNum} days to subscription for user ${targetUser.substring(0, 8)}...`);
+            res.json({ success: true, message: `Added ${daysNum} days to subscription`, subscription: newSub });
+        } else {
+            res.status(500).json({ message: 'Failed to add subscription days' });
+        }
+    } catch (error) {
+        console.error('Error adding subscription days:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// Admin: Remove subscription
+app.post('/api/subscription/remove', authenticateToken, (req, res) => {
+    try {
+        const { targetUser } = req.body;
+        
+        if (!targetUser) {
+            return res.status(400).json({ message: 'targetUser is required' });
+        }
+        
+        const user = userDb.findByUsername(targetUser);
+        if (!user) {
+            return res.status(404).json({ message: 'Target user not found' });
+        }
+        
+        const success = userDb.removeSubscription(targetUser);
+        
+        if (success) {
+            console.log(`Subscription removed for user ${targetUser.substring(0, 8)}...`);
+            res.json({ success: true, message: 'Subscription removed successfully' });
+        } else {
+            res.status(500).json({ message: 'Failed to remove subscription' });
+        }
+    } catch (error) {
+        console.error('Error removing subscription:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
 // Payload generation endpoint - creates a standalone exe with embedded config
 app.post('/api/payloads/generate', authenticateToken, (req, res) => {
     try {
         const username = req.user.username;
         const { features, user, outputName } = req.body;
+
+        // Check subscription status
+        if (!userDb.hasActiveSubscription(username)) {
+            return res.status(403).json({ 
+                message: 'Active subscription required to build payloads',
+                subscriptionRequired: true
+            });
+        }
 
         if (!features || typeof features !== 'object') {
             return res.status(400).json({ message: 'features object is required' });
