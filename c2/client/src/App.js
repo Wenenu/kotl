@@ -11,7 +11,6 @@ import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import DashboardPage from './pages/DashboardPage';
 import StatisticsPage from './pages/StatisticsPage';
-import TimelinePage from './pages/TimelinePage';
 import SettingsPage from './pages/SettingsPage';
 import LogDetailPage from './pages/LogDetailPage';
 import PayloadBuilderPage from './pages/PayloadBuilderPage';
@@ -116,7 +115,6 @@ function App() {
                             <Route path="/" element={<DashboardPage />} />
                             <Route path="/statistics" element={<StatisticsPage />} />
                             <Route path="/builder" element={<PayloadBuilderPage />} />
-                            <Route path="/timeline" element={<TimelinePage />} />
                             <Route path="/settings" element={<SettingsPage />} />
                             <Route path="/log/:logId" element={<LogDetailPage />} />
                         </Routes>

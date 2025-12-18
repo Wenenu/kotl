@@ -7,9 +7,6 @@ import {
     Card,
     CardContent,
     CircularProgress,
-    List,
-    ListItem,
-    ListItemText,
     Chip,
 } from '@mui/material';
 import {
@@ -26,18 +23,55 @@ import {
     ResponsiveContainer,
 } from 'recharts';
 
-const COLORS = ['#4ade80', '#60a5fa', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-
 function StatisticsPage() {
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [themeColors, setThemeColors] = useState({
+        primary: '#4ade80',
+        secondary: '#60a5fa',
+        background: '#1a1f2e',
+        paper: '#252b3b',
+        textPrimary: '#e2e8f0',
+        textSecondary: '#94a3b8',
+    });
+
+    // Load theme colors from localStorage
+    useEffect(() => {
+        const savedSettings = localStorage.getItem('themeSettings');
+        if (savedSettings) {
+            try {
+                const parsed = JSON.parse(savedSettings);
+                setThemeColors(prev => ({
+                    ...prev,
+                    primary: parsed.primary || prev.primary,
+                    secondary: parsed.secondary || prev.secondary,
+                    background: parsed.background || prev.background,
+                    paper: parsed.paper || prev.paper,
+                    textPrimary: parsed.textPrimary || prev.textPrimary,
+                    textSecondary: parsed.textSecondary || prev.textSecondary,
+                }));
+            } catch (e) {
+                console.error('Error loading theme settings:', e);
+            }
+        }
+    }, []);
+
+    // Chart colors based on theme
+    const COLORS = [themeColors.primary, themeColors.secondary, '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
     useEffect(() => {
         const fetchStatistics = async () => {
             try {
                 setLoading(true);
-                const response = await fetch('/api/statistics');
+                const token = localStorage.getItem('authToken');
+                
+                const response = await fetch('/api/statistics', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                });
                 
                 // Check if response is HTML (which means route wasn't found)
                 const contentType = response.headers.get('content-type');
@@ -69,8 +103,8 @@ function StatisticsPage() {
     if (loading) {
         return (
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-                <CircularProgress sx={{ color: '#4ade80' }} />
-                <Typography sx={{ ml: 2, color: '#94a3b8' }}>Loading statistics...</Typography>
+                <CircularProgress sx={{ color: themeColors.primary }} />
+                <Typography sx={{ ml: 2, color: themeColors.textSecondary }}>Loading statistics...</Typography>
             </Box>
         );
     }
@@ -86,7 +120,7 @@ function StatisticsPage() {
     if (!stats) {
         return (
             <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-                <Typography sx={{ color: '#94a3b8' }}>No statistics available.</Typography>
+                <Typography sx={{ color: themeColors.textSecondary }}>No statistics available.</Typography>
             </Box>
         );
     }
@@ -106,27 +140,27 @@ function StatisticsPage() {
 
     return (
         <Box sx={{ p: 3 }}>
-            <Typography variant="h4" sx={{ color: '#4ade80', mb: 3, fontWeight: 700 }}>
-                Global Statistics
+            <Typography variant="h4" sx={{ color: themeColors.primary, mb: 3, fontWeight: 700 }}>
+                Statistics
             </Typography>
 
             {/* Summary Cards */}
             <Grid container spacing={3} sx={{ mb: 4 }}>
                 <Grid item xs={12} sm={6} md={3}>
                     <Card sx={{ 
-                        backgroundColor: '#252b3b', 
-                        border: '1px solid #334155', 
+                        backgroundColor: themeColors.paper, 
+                        border: `1px solid ${themeColors.textSecondary}33`, 
                         borderRadius: '12px',
                         height: '100%'
                     }}>
                         <CardContent>
-                            <Typography variant="h6" sx={{ color: '#94a3b8', mb: 1, fontSize: '0.9rem' }}>
+                            <Typography variant="h6" sx={{ color: themeColors.textSecondary, mb: 1, fontSize: '0.9rem' }}>
                                 TOTAL LOGS
                             </Typography>
-                            <Typography variant="h3" sx={{ color: '#4ade80', fontWeight: 700 }}>
+                            <Typography variant="h3" sx={{ color: themeColors.primary, fontWeight: 700 }}>
                                 {stats.totalLogs}
                             </Typography>
-                            <Typography variant="body2" sx={{ color: '#94a3b8', mt: 1 }}>
+                            <Typography variant="body2" sx={{ color: themeColors.textSecondary, mt: 1 }}>
                                 All collected logs
                             </Typography>
                         </CardContent>
@@ -135,19 +169,19 @@ function StatisticsPage() {
 
                 <Grid item xs={12} sm={6} md={3}>
                     <Card sx={{ 
-                        backgroundColor: '#252b3b', 
-                        border: '1px solid #334155', 
+                        backgroundColor: themeColors.paper, 
+                        border: `1px solid ${themeColors.textSecondary}33`, 
                         borderRadius: '12px',
                         height: '100%'
                     }}>
                         <CardContent>
-                            <Typography variant="h6" sx={{ color: '#94a3b8', mb: 1, fontSize: '0.9rem' }}>
+                            <Typography variant="h6" sx={{ color: themeColors.textSecondary, mb: 1, fontSize: '0.9rem' }}>
                                 IMPORTANT LOGS
                             </Typography>
                             <Typography variant="h3" sx={{ color: '#f59e0b', fontWeight: 700 }}>
                                 {stats.importantLogs}
                             </Typography>
-                            <Typography variant="body2" sx={{ color: '#94a3b8', mt: 1 }}>
+                            <Typography variant="body2" sx={{ color: themeColors.textSecondary, mt: 1 }}>
                                 {importantPercentage}% of total
                             </Typography>
                         </CardContent>
@@ -156,19 +190,19 @@ function StatisticsPage() {
 
                 <Grid item xs={12} sm={6} md={3}>
                     <Card sx={{ 
-                        backgroundColor: '#252b3b', 
-                        border: '1px solid #334155', 
+                        backgroundColor: themeColors.paper, 
+                        border: `1px solid ${themeColors.textSecondary}33`, 
                         borderRadius: '12px',
                         height: '100%'
                     }}>
                         <CardContent>
-                            <Typography variant="h6" sx={{ color: '#94a3b8', mb: 1, fontSize: '0.9rem' }}>
+                            <Typography variant="h6" sx={{ color: themeColors.textSecondary, mb: 1, fontSize: '0.9rem' }}>
                                 DATA COLLECTED
                             </Typography>
-                            <Typography variant="h5" sx={{ color: '#8b5cf6', fontWeight: 700 }}>
+                            <Typography variant="h5" sx={{ color: themeColors.secondary, fontWeight: 700 }}>
                                 {stats.totals.historyEntries + stats.totals.cookies + stats.totals.processes}
                             </Typography>
-                            <Typography variant="body2" sx={{ color: '#94a3b8', mt: 1 }}>
+                            <Typography variant="body2" sx={{ color: themeColors.textSecondary, mt: 1 }}>
                                 History, cookies, processes
                             </Typography>
                         </CardContent>
@@ -182,47 +216,47 @@ function StatisticsPage() {
                 <Grid item xs={12} md={8}>
                     <Paper sx={{ 
                         p: 3, 
-                        backgroundColor: '#252b3b', 
-                        border: '1px solid #334155', 
+                        backgroundColor: themeColors.paper, 
+                        border: `1px solid ${themeColors.textSecondary}33`, 
                         borderRadius: '12px' 
                     }}>
-                        <Typography variant="h6" sx={{ color: '#4ade80', mb: 3, fontWeight: 600 }}>
+                        <Typography variant="h6" sx={{ color: themeColors.primary, mb: 3, fontWeight: 600 }}>
                             Last 30 Days
                         </Typography>
                         <ResponsiveContainer width="100%" height={300}>
                             <LineChart data={stats.last30Days}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                                <CartesianGrid strokeDasharray="3 3" stroke={`${themeColors.textSecondary}33`} />
                                 <XAxis 
                                     dataKey="date" 
-                                    stroke="#94a3b8"
-                                    tick={{ fill: '#94a3b8', fontSize: 12 }}
+                                    stroke={themeColors.textSecondary}
+                                    tick={{ fill: themeColors.textSecondary, fontSize: 12 }}
                                     tickFormatter={(value) => {
                                         const date = new Date(value);
                                         return `${date.getMonth() + 1}/${date.getDate()}`;
                                     }}
                                 />
                                 <YAxis 
-                                    stroke="#94a3b8"
-                                    tick={{ fill: '#94a3b8', fontSize: 12 }}
+                                    stroke={themeColors.textSecondary}
+                                    tick={{ fill: themeColors.textSecondary, fontSize: 12 }}
                                 />
                                 <Tooltip 
                                     contentStyle={{ 
-                                        backgroundColor: '#1a1f2e', 
-                                        border: '1px solid #334155',
+                                        backgroundColor: themeColors.background, 
+                                        border: `1px solid ${themeColors.textSecondary}33`,
                                         borderRadius: '8px',
-                                        color: '#e2e8f0'
+                                        color: themeColors.textPrimary
                                     }}
-                                    labelStyle={{ color: '#4ade80' }}
+                                    labelStyle={{ color: themeColors.primary }}
                                 />
                                 <Legend 
-                                    wrapperStyle={{ color: '#94a3b8' }}
+                                    wrapperStyle={{ color: themeColors.textSecondary }}
                                 />
                                 <Line 
                                     type="monotone" 
                                     dataKey="count" 
-                                    stroke="#4ade80" 
+                                    stroke={themeColors.primary} 
                                     strokeWidth={2}
-                                    dot={{ fill: '#4ade80', r: 3 }}
+                                    dot={{ fill: themeColors.primary, r: 3 }}
                                     name="Logs"
                                 />
                             </LineChart>
@@ -234,14 +268,14 @@ function StatisticsPage() {
                 <Grid item xs={12} md={4}>
                     <Paper sx={{ 
                         p: 3, 
-                        backgroundColor: '#252b3b', 
-                        border: '1px solid #334155', 
+                        backgroundColor: themeColors.paper, 
+                        border: `1px solid ${themeColors.textSecondary}33`, 
                         borderRadius: '12px' 
                     }}>
-                        <Typography variant="h6" sx={{ color: '#4ade80', mb: 1, fontWeight: 600, textAlign: 'center' }}>
+                        <Typography variant="h6" sx={{ color: themeColors.primary, mb: 1, fontWeight: 600, textAlign: 'center' }}>
                             Total Logs Distribution
                         </Typography>
-                        <Typography variant="h4" sx={{ color: '#e2e8f0', mb: 1, textAlign: 'center', fontWeight: 700 }}>
+                        <Typography variant="h4" sx={{ color: themeColors.textPrimary, mb: 1, textAlign: 'center', fontWeight: 700 }}>
                             {stats.totalLogs}
                         </Typography>
                         <ResponsiveContainer width="100%" height={180}>
@@ -261,10 +295,10 @@ function StatisticsPage() {
                                 </Pie>
                                 <Tooltip 
                                     contentStyle={{ 
-                                        backgroundColor: '#1a1f2e', 
-                                        border: '1px solid #334155',
+                                        backgroundColor: themeColors.background, 
+                                        border: `1px solid ${themeColors.textSecondary}33`,
                                         borderRadius: '8px',
-                                        color: '#e2e8f0'
+                                        color: themeColors.textPrimary
                                     }}
                                 />
                             </PieChart>
@@ -272,23 +306,23 @@ function StatisticsPage() {
                         <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <Box sx={{ width: 16, height: 16, backgroundColor: '#4ade80', borderRadius: '4px' }} />
-                                    <Typography variant="body2" sx={{ color: '#94a3b8' }}>
+                                    <Box sx={{ width: 16, height: 16, backgroundColor: themeColors.primary, borderRadius: '4px' }} />
+                                    <Typography variant="body2" sx={{ color: themeColors.textSecondary }}>
                                         Important Logs
                                     </Typography>
                                 </Box>
-                                <Typography variant="body2" sx={{ color: '#4ade80', fontWeight: 600 }}>
+                                <Typography variant="body2" sx={{ color: themeColors.primary, fontWeight: 600 }}>
                                     {importantPercentage}%
                                 </Typography>
                             </Box>
                             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <Box sx={{ width: 16, height: 16, backgroundColor: '#60a5fa', borderRadius: '4px' }} />
-                                    <Typography variant="body2" sx={{ color: '#94a3b8' }}>
+                                    <Box sx={{ width: 16, height: 16, backgroundColor: themeColors.secondary, borderRadius: '4px' }} />
+                                    <Typography variant="body2" sx={{ color: themeColors.textSecondary }}>
                                         Regular Logs
                                     </Typography>
                                 </Box>
-                                <Typography variant="body2" sx={{ color: '#60a5fa', fontWeight: 600 }}>
+                                <Typography variant="body2" sx={{ color: themeColors.secondary, fontWeight: 600 }}>
                                     {regularPercentage}%
                                 </Typography>
                             </Box>
@@ -300,11 +334,11 @@ function StatisticsPage() {
                 <Grid item xs={12}>
                     <Paper sx={{ 
                         p: 3, 
-                        backgroundColor: '#252b3b', 
-                        border: '1px solid #334155', 
+                        backgroundColor: themeColors.paper, 
+                        border: `1px solid ${themeColors.textSecondary}33`, 
                         borderRadius: '12px' 
                     }}>
-                        <Typography variant="h6" sx={{ color: '#4ade80', mb: 3, fontWeight: 600 }}>
+                        <Typography variant="h6" sx={{ color: themeColors.primary, mb: 3, fontWeight: 600 }}>
                             Data by Country
                         </Typography>
                         {stats.countryDistribution.length > 0 ? (
@@ -317,26 +351,26 @@ function StatisticsPage() {
                                         <Grid item xs={12} sm={6} md={4} lg={3} key={item.country}>
                                             <Box sx={{ 
                                                 p: 2, 
-                                                backgroundColor: '#1a1f2e', 
+                                                backgroundColor: themeColors.background, 
                                                 borderRadius: '8px',
-                                                border: '1px solid #334155',
+                                                border: `1px solid ${themeColors.textSecondary}33`,
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'space-between'
                                             }}>
                                                 <Box>
-                                                    <Typography variant="body1" sx={{ color: '#e2e8f0', fontWeight: 500 }}>
+                                                    <Typography variant="body1" sx={{ color: themeColors.textPrimary, fontWeight: 500 }}>
                                                         {item.country}
                                                     </Typography>
-                                                    <Typography variant="body2" sx={{ color: '#94a3b8', mt: 0.5 }}>
+                                                    <Typography variant="body2" sx={{ color: themeColors.textSecondary, mt: 0.5 }}>
                                                         {percentage}%
                                                     </Typography>
                                                 </Box>
                                                 <Chip 
                                                     label={item.count} 
                                                     sx={{ 
-                                                        backgroundColor: '#4ade80',
-                                                        color: '#1a1f2e',
+                                                        backgroundColor: themeColors.primary,
+                                                        color: themeColors.background,
                                                         fontWeight: 700,
                                                         minWidth: '60px'
                                                     }} 
@@ -347,7 +381,7 @@ function StatisticsPage() {
                                 })}
                             </Grid>
                         ) : (
-                            <Typography sx={{ color: '#94a3b8', p: 2 }}>
+                            <Typography sx={{ color: themeColors.textSecondary, p: 2 }}>
                                 No country data available.
                             </Typography>
                         )}

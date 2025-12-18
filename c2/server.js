@@ -720,10 +720,21 @@ app.get('/api/stats', (req, res) => {
     }
 });
 
-app.get('/api/statistics', (req, res) => {
+app.get('/api/statistics', authenticateToken, (req, res) => {
     console.log('Statistics endpoint hit!');
     try {
-        const logs = logsDb.getAll();
+        const username = req.user.username;
+        
+        // Get all logs and filter by user
+        let logs = logsDb.getAll();
+        logs = logs.filter(log => {
+            const logUser = log.user;
+            if (!logUser || logUser === null || logUser === '' || logUser === undefined) {
+                return username === 'account';
+            }
+            return logUser === username;
+        });
+        
         const totalLogs = logs.length;
         
         // Calculate country distribution
