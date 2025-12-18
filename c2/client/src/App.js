@@ -14,6 +14,7 @@ import StatisticsPage from './pages/StatisticsPage';
 import SettingsPage from './pages/SettingsPage';
 import LogDetailPage from './pages/LogDetailPage';
 import PayloadBuilderPage from './pages/PayloadBuilderPage';
+import PurchasePage from './pages/PurchasePage';
 import Login from './components/Login';
 
 
@@ -115,6 +116,7 @@ function App() {
                             <Route path="/" element={<DashboardPage />} />
                             <Route path="/statistics" element={<StatisticsPage />} />
                             <Route path="/builder" element={<PayloadBuilderPage />} />
+                            <Route path="/purchase" element={<PurchasePage />} />
                             <Route path="/settings" element={<SettingsPage />} />
                             <Route path="/log/:logId" element={<LogDetailPage />} />
                         </Routes>

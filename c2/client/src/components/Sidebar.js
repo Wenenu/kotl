@@ -14,6 +14,7 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import SettingsIcon from '@mui/icons-material/Settings';
 import BuildIcon from '@mui/icons-material/Build';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 
 const drawerWidth = 240;
 
@@ -21,6 +22,7 @@ const menuItems = [
     { text: 'Dashboard', path: '/', icon: <DashboardIcon /> },
     { text: 'Statistics', path: '/statistics', icon: <BarChartIcon /> },
     { text: 'Builder', path: '/builder', icon: <BuildIcon /> },
+    { text: 'Purchase', path: '/purchase', icon: <ShoppingCartIcon /> },
     { text: 'Settings', path: '/settings', icon: <SettingsIcon /> },
 ];
 

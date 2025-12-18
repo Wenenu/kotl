@@ -10,6 +10,10 @@ const { userDb, loginAttemptsDb, logsDb } = require('./database');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// CryptoBot API configuration
+const CRYPTOBOT_API_TOKEN = process.env.CRYPTOBOT_API_TOKEN || '';
+const CRYPTOBOT_API_URL = 'https://pay.crypt.bot/api';
+
 // Helper function to check if a cookie is non-expired
 const isCookieNonExpired = (cookie) => {
     if (!cookie.expires && !cookie.expires_utc) return true; // Session cookies (no expiry) are valid
@@ -745,6 +749,194 @@ app.post('/api/subscription/remove', authenticateToken, (req, res) => {
         res.status(500).json({ message: 'Internal server error' });
     }
 });
+
+// ==================== CryptoBot Payment Integration ====================
+
+// Subscription plans configuration
+const SUBSCRIPTION_PLANS = {
+    week: { days: 7, price: 20, name: 'Week', currency: 'EUR' },
+    month: { days: 30, price: 55, name: 'Month', currency: 'EUR' },
+    '6month': { days: 180, price: 220, name: '6 Month', currency: 'EUR' }
+};
+
+// Helper function to call CryptoBot API
+async function cryptoBotRequest(method, params = {}) {
+    if (!CRYPTOBOT_API_TOKEN) {
+        throw new Error('CryptoBot API token not configured');
+    }
+    
+    const response = await fetch(`${CRYPTOBOT_API_URL}/${method}`, {
+        method: 'POST',
+        headers: {
+            'Crypto-Pay-API-Token': CRYPTOBOT_API_TOKEN,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(params)
+    });
+    
+    const data = await response.json();
+    
+    if (!data.ok) {
+        throw new Error(data.error?.name || 'CryptoBot API error');
+    }
+    
+    return data.result;
+}
+
+// Create payment invoice for a subscription plan
+app.post('/api/payment/create-invoice', authenticateToken, async (req, res) => {
+    try {
+        const username = req.user.username;
+        const { planId } = req.body;
+        
+        if (!planId || !SUBSCRIPTION_PLANS[planId]) {
+            return res.status(400).json({ message: 'Invalid plan selected' });
+        }
+        
+        if (!CRYPTOBOT_API_TOKEN) {
+            return res.status(500).json({ message: 'Payment system not configured. Please contact administrator.' });
+        }
+        
+        const plan = SUBSCRIPTION_PLANS[planId];
+        
+        // Create invoice via CryptoBot API
+        // Using USDT as the payment currency (stable, widely used)
+        const invoice = await cryptoBotRequest('createInvoice', {
+            currency_type: 'fiat',
+            fiat: plan.currency,
+            amount: plan.price.toString(),
+            description: `${plan.name} Subscription`,
+            payload: JSON.stringify({
+                username: username,
+                planId: planId,
+                days: plan.days
+            }),
+            paid_btn_name: 'callback',
+            paid_btn_url: process.env.WEBPANEL_URL || 'https://your-panel-url.com',
+            expires_in: 3600 // 1 hour to complete payment
+        });
+        
+        console.log(`Invoice created for user ${username.substring(0, 8)}...: ${plan.name} plan, Invoice ID: ${invoice.invoice_id}`);
+        
+        res.json({
+            success: true,
+            invoiceId: invoice.invoice_id,
+            payUrl: invoice.pay_url,
+            amount: plan.price,
+            currency: plan.currency,
+            plan: plan.name,
+            expiresAt: new Date(Date.now() + 3600000).toISOString()
+        });
+        
+    } catch (error) {
+        console.error('Error creating invoice:', error);
+        res.status(500).json({ message: error.message || 'Failed to create payment invoice' });
+    }
+});
+
+// Check invoice status
+app.get('/api/payment/check/:invoiceId', authenticateToken, async (req, res) => {
+    try {
+        const { invoiceId } = req.params;
+        
+        if (!CRYPTOBOT_API_TOKEN) {
+            return res.status(500).json({ message: 'Payment system not configured' });
+        }
+        
+        const invoices = await cryptoBotRequest('getInvoices', {
+            invoice_ids: [parseInt(invoiceId)]
+        });
+        
+        if (!invoices.items || invoices.items.length === 0) {
+            return res.status(404).json({ message: 'Invoice not found' });
+        }
+        
+        const invoice = invoices.items[0];
+        
+        res.json({
+            status: invoice.status,
+            paid: invoice.status === 'paid',
+            amount: invoice.amount,
+            currency: invoice.fiat || invoice.asset
+        });
+        
+    } catch (error) {
+        console.error('Error checking invoice:', error);
+        res.status(500).json({ message: 'Failed to check invoice status' });
+    }
+});
+
+// CryptoBot webhook handler - receives payment confirmations
+app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), (req, res) => {
+    try {
+        // Parse the webhook body
+        let body;
+        if (Buffer.isBuffer(req.body)) {
+            body = JSON.parse(req.body.toString());
+        } else {
+            body = req.body;
+        }
+        
+        console.log('CryptoBot webhook received:', JSON.stringify(body, null, 2));
+        
+        // Verify this is a payment update
+        if (body.update_type !== 'invoice_paid') {
+            return res.status(200).send('OK');
+        }
+        
+        const invoice = body.payload;
+        
+        if (!invoice || invoice.status !== 'paid') {
+            return res.status(200).send('OK');
+        }
+        
+        // Parse our custom payload
+        let payloadData;
+        try {
+            payloadData = JSON.parse(invoice.payload);
+        } catch (e) {
+            console.error('Failed to parse invoice payload:', e);
+            return res.status(200).send('OK');
+        }
+        
+        const { username, planId, days } = payloadData;
+        
+        if (!username || !days) {
+            console.error('Invalid payload data:', payloadData);
+            return res.status(200).send('OK');
+        }
+        
+        // Activate subscription
+        const success = userDb.addSubscriptionDays(username, days);
+        
+        if (success) {
+            console.log(`✓ Payment confirmed! Activated ${days} days for user ${username.substring(0, 8)}... (Invoice: ${invoice.invoice_id})`);
+        } else {
+            console.error(`Failed to activate subscription for user ${username.substring(0, 8)}...`);
+        }
+        
+        res.status(200).send('OK');
+        
+    } catch (error) {
+        console.error('Webhook error:', error);
+        res.status(200).send('OK'); // Always return 200 to prevent retries
+    }
+});
+
+// Get available subscription plans
+app.get('/api/payment/plans', (req, res) => {
+    const plans = Object.entries(SUBSCRIPTION_PLANS).map(([id, plan]) => ({
+        id,
+        name: plan.name,
+        days: plan.days,
+        price: plan.price,
+        currency: plan.currency
+    }));
+    
+    res.json({ plans, cryptoBotEnabled: !!CRYPTOBOT_API_TOKEN });
+});
+
+// ==================== End CryptoBot Integration ====================
 
 // Payload generation endpoint - creates a standalone exe with embedded config
 app.post('/api/payloads/generate', authenticateToken, (req, res) => {

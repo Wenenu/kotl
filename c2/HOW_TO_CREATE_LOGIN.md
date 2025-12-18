@@ -76,6 +76,58 @@ If you lose your access key:
 2. Register a new account through the web panel or command line
 3. Save your new key securely this time!
 
+## Subscription Management
+
+Users need an active subscription to build payloads.
+
+**Set subscription (admin):**
+```bash
+node manage-db.js set-sub <access-key> <days>
+```
+
+**Add days to subscription:**
+```bash
+node manage-db.js add-sub <access-key> <days>
+```
+
+**Remove subscription:**
+```bash
+node manage-db.js remove-sub <access-key>
+```
+
+**Check subscription status:**
+```bash
+node manage-db.js check-sub <access-key>
+```
+
+## CryptoBot Payment Integration (Optional)
+
+Enable automatic crypto payments through Telegram's CryptoBot.
+
+### Setup:
+
+1. Open Telegram and message [@CryptoBot](https://t.me/CryptoBot)
+2. Go to **Crypto Pay** → **My Apps** → **Create App**
+3. Get your API token
+4. Add to your `.env` file:
+
+```bash
+CRYPTOBOT_API_TOKEN=503498:AAGT8tv9ON0qNf8tHDJMH4P80RYxjUFOUDF
+WEBPANEL_URL=https://naif.wtf
+```
+
+5. Set up the webhook URL in CryptoBot:
+   - Go to your app settings in CryptoBot
+   - Set webhook URL to: `https://naif.wtf/api/payment/webhook`
+
+### How it works:
+
+1. User clicks "Purchase" on a plan
+2. Server creates an invoice via CryptoBot API
+3. User pays with crypto (BTC, ETH, USDT, TON, etc.)
+4. CryptoBot sends webhook when payment is confirmed
+5. Subscription is automatically activated
+
 ## PM2 Commands Reference
 
 ```bash
