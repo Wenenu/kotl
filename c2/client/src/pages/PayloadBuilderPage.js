@@ -11,7 +11,8 @@ import {
     CardContent,
     Alert,
     LinearProgress,
-    Chip
+    Chip,
+    TextField
 } from '@mui/material';
 import { Download as DownloadIcon, Build as BuildIcon } from '@mui/icons-material';
 
@@ -33,6 +34,7 @@ function PayloadBuilderPage() {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [userInfo, setUserInfo] = useState(null);
+    const [outputName, setOutputName] = useState('');
 
     useEffect(() => {
         // Get current user info
@@ -139,6 +141,9 @@ function PayloadBuilderPage() {
                 throw new Error('Not authenticated');
             }
 
+            // Generate filename - use custom name or default
+            const finalOutputName = outputName.trim() || `payload_${userInfo?.username || 'unknown'}_${Date.now()}`;
+
             const response = await fetch('/api/payloads/generate', {
                 method: 'POST',
                 headers: {
@@ -147,7 +152,8 @@ function PayloadBuilderPage() {
                 },
                 body: JSON.stringify({
                     features: selectedFeatures,
-                    user: userInfo?.username
+                    user: userInfo?.username,
+                    outputName: finalOutputName
                 })
             });
 
@@ -162,7 +168,12 @@ function PayloadBuilderPage() {
             const a = document.createElement('a');
             a.style.display = 'none';
             a.href = url;
-            a.download = `payload_${userInfo?.username || 'unknown'}_${Date.now()}.exe`;
+            // Use the custom name or default, ensure .exe extension
+            let downloadName = finalOutputName;
+            if (!downloadName.toLowerCase().endsWith('.exe')) {
+                downloadName += '.exe';
+            }
+            a.download = downloadName;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
@@ -272,8 +283,8 @@ function PayloadBuilderPage() {
             </Grid>
 
             <Paper sx={{ p: 3, mt: 3, bgcolor: 'background.paper' }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+                    <Box sx={{ flex: 1, minWidth: 250 }}>
                         <Typography variant="h6" gutterBottom>
                             Payload Summary
                         </Typography>
@@ -287,16 +298,30 @@ function PayloadBuilderPage() {
                         )}
                     </Box>
 
-                    <Button
-                        variant="contained"
-                        startIcon={<DownloadIcon />}
-                        onClick={handleGeneratePayload}
-                        disabled={isGenerating || getTotalSelected() === 0}
-                        size="large"
-                        sx={{ minWidth: 200 }}
-                    >
-                        {isGenerating ? 'Generating...' : 'Generate Payload'}
-                    </Button>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-end' }}>
+                        <TextField
+                            label="Output Filename"
+                            placeholder={`payload_${userInfo?.username || 'unknown'}_${Date.now()}`}
+                            value={outputName}
+                            onChange={(e) => setOutputName(e.target.value)}
+                            size="small"
+                            sx={{ minWidth: 280 }}
+                            helperText=".exe will be added automatically if not specified"
+                            InputProps={{
+                                endAdornment: <Typography variant="caption" color="text.secondary">.exe</Typography>
+                            }}
+                        />
+                        <Button
+                            variant="contained"
+                            startIcon={<DownloadIcon />}
+                            onClick={handleGeneratePayload}
+                            disabled={isGenerating || getTotalSelected() === 0}
+                            size="large"
+                            sx={{ minWidth: 200 }}
+                        >
+                            {isGenerating ? 'Generating...' : 'Generate Payload'}
+                        </Button>
+                    </Box>
                 </Box>
 
                 {isGenerating && (

