@@ -804,7 +804,7 @@ async function nowPaymentsRequest(endpoint, method = 'GET', body = null) {
     if (!NOWPAYMENTS_API_KEY) {
         throw new Error('NOWPayments API key not configured');
     }
-    
+
     const url = `${NOWPAYMENTS_API_URL}${endpoint}`;
     const options = {
         method,
@@ -813,18 +813,47 @@ async function nowPaymentsRequest(endpoint, method = 'GET', body = null) {
             'Content-Type': 'application/json'
         }
     };
-    
+
     if (body) {
         options.body = JSON.stringify(body);
     }
-    
+
     const response = await fetch(url, options);
     const data = await response.json();
-    
+
     if (!response.ok) {
         throw new Error(data.message || data.err || 'NOWPayments API error');
     }
-    
+
+    return data;
+}
+
+// Helper function to call Bitpapa API
+async function bitpapaRequest(endpoint, method = 'GET', body = null) {
+    if (!BITPAPA_API_TOKEN) {
+        throw new Error('Bitpapa API token not configured');
+    }
+
+    const url = `${BITPAPA_API_URL}${endpoint}`;
+    const options = {
+        method,
+        headers: {
+            'Authorization': `Bearer ${BITPAPA_API_TOKEN}`,
+            'Content-Type': 'application/json'
+        }
+    };
+
+    if (body) {
+        options.body = JSON.stringify(body);
+    }
+
+    const response = await fetch(url, options);
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.message || data.error || 'Bitpapa API error');
+    }
+
     return data;
 }
 
@@ -850,8 +879,8 @@ app.post('/api/payment/create-invoice', authenticateToken, async (req, res) => {
                 // Encode subscription info in order_id: sub_username_planId_days_timestamp
                 // NOWPayments doesn't support metadata field, so we encode it in order_id
                 const orderId = `sub_${username}_${planId}_${plan.days}_${Date.now()}`;
-                
-                const invoice = await nowPaymentsRequest('/payment', 'POST', {
+
+                const invoice = await nowPaymentsRequest('/invoice', 'POST', {
                     price_amount: plan.price,
                     price_currency: plan.currency.toLowerCase(),
                     pay_currency: 'ltc', // Default currency, user can change on payment page
@@ -861,13 +890,21 @@ app.post('/api/payment/create-invoice', authenticateToken, async (req, res) => {
                     success_url: returnUrl,
                     cancel_url: returnUrl
                 });
-                
+
                 console.log(`[NOWPayments] Invoice created for user ${username.substring(0, 8)}...: ${plan.name} plan, Payment ID: ${invoice.payment_id}`);
+                console.log(`[NOWPayments] Full invoice response:`, JSON.stringify(invoice, null, 2));
                 
+                // Check for the correct URL field in NOWPayments response
+                const payUrl = invoice.invoice_url || invoice.pay_url || invoice.payment_url;
+                if (!payUrl) {
+                    console.error('[NOWPayments] No payment URL found in response:', invoice);
+                    throw new Error('No payment URL received from NOWPayments');
+                }
+
                 return res.json({
                     success: true,
                     invoiceId: invoice.payment_id,
-                    payUrl: invoice.invoice_url || invoice.pay_url,
+                    payUrl: payUrl,
                     amount: plan.price,
                     currency: plan.currency,
                     plan: plan.name,
