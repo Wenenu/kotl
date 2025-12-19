@@ -45,7 +45,7 @@ const NOWPAYMENTS_IPN_SECRET = process.env.NOWPAYMENTS_IPN_SECRET || '';
 
 // Bitpapa API configuration (https://bitpapa.com)
 const BITPAPA_API_TOKEN = process.env.BITPAPA_API_TOKEN || '';
-const BITPAPA_API_URL = 'https://api.bitpapa.com/v1';
+const BITPAPA_API_URL = 'https://api.bitpapa.com';
 
 // Manual payment wallet addresses (for direct crypto payments)
 const WALLET_ADDRESSES = {
@@ -839,7 +839,8 @@ async function bitpapaRequest(endpoint, method = 'GET', body = null) {
         method,
         headers: {
             'Authorization': `Bearer ${BITPAPA_API_TOKEN}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
         }
     };
 
@@ -847,14 +848,30 @@ async function bitpapaRequest(endpoint, method = 'GET', body = null) {
         options.body = JSON.stringify(body);
     }
 
-    const response = await fetch(url, options);
-    const data = await response.json();
+    try {
+        const response = await fetch(url, options);
 
-    if (!response.ok) {
-        throw new Error(data.message || data.error || 'Bitpapa API error');
+        // Check if response is JSON
+        const contentType = response.headers.get('content-type');
+        let data;
+        if (contentType && contentType.includes('application/json')) {
+            data = await response.json();
+        } else {
+            const text = await response.text();
+            console.error('[Bitpapa] Non-JSON response:', text);
+            throw new Error(`Unexpected response format from Bitpapa API: ${response.status} ${response.statusText}`);
+        }
+
+        if (!response.ok) {
+            console.error('[Bitpapa] API error response:', data);
+            throw new Error(data.message || data.error || `Bitpapa API error: ${response.status} ${response.statusText}`);
+        }
+
+        return data;
+    } catch (fetchError) {
+        console.error('[Bitpapa] Fetch error:', fetchError.message);
+        throw new Error(`Failed to connect to Bitpapa API: ${fetchError.message}`);
     }
-
-    return data;
 }
 
 // Create payment invoice for a subscription plan
@@ -928,22 +945,61 @@ app.post('/api/payment/create-invoice', authenticateToken, async (req, res) => {
                 // Encode subscription info in order_id: sub_username_planId_days_timestamp
                 const orderId = `sub_${username}_${planId}_${plan.days}_${Date.now()}`;
                 
-                const invoice = await bitpapaRequest('/invoices', 'POST', {
-                    amount: plan.price,
-                    currency: plan.currency.toUpperCase(),
-                    description: `${plan.name} Subscription`,
-                    order_id: orderId,
-                    callback_url: webhookUrl,
-                    success_url: returnUrl,
-                    cancel_url: returnUrl
-                });
+                // Try different possible BitPapa API endpoints
+                let invoice;
+                try {
+                    // Try /api/v1/invoices first
+                    invoice = await bitpapaRequest('/api/v1/invoices', 'POST', {
+                        amount: plan.price,
+                        currency: plan.currency.toUpperCase(),
+                        description: `${plan.name} Subscription`,
+                        order_id: orderId,
+                        callback_url: webhookUrl,
+                        success_url: returnUrl,
+                        cancel_url: returnUrl
+                    });
+                } catch (firstTryError) {
+                    console.log('[Bitpapa] First endpoint failed, trying alternative...');
+                    try {
+                        // Try /v1/invoices
+                        invoice = await bitpapaRequest('/v1/invoices', 'POST', {
+                            amount: plan.price,
+                            currency: plan.currency.toUpperCase(),
+                            description: `${plan.name} Subscription`,
+                            order_id: orderId,
+                            callback_url: webhookUrl,
+                            success_url: returnUrl,
+                            cancel_url: returnUrl
+                        });
+                    } catch (secondTryError) {
+                        console.log('[Bitpapa] Second endpoint failed, trying basic /invoices...');
+                        // Try basic /invoices
+                        invoice = await bitpapaRequest('/invoices', 'POST', {
+                            amount: plan.price,
+                            currency: plan.currency.toUpperCase(),
+                            description: `${plan.name} Subscription`,
+                            order_id: orderId,
+                            callback_url: webhookUrl,
+                            success_url: returnUrl,
+                            cancel_url: returnUrl
+                        });
+                    }
+                }
                 
                 console.log(`[Bitpapa] Invoice created for user ${username.substring(0, 8)}...: ${plan.name} plan, Invoice ID: ${invoice.id || invoice.invoice_id}`);
+                console.log(`[Bitpapa] Full invoice response:`, JSON.stringify(invoice, null, 2));
                 
+                // Check for the correct URL field in BitPapa response
+                const payUrl = invoice.payment_url || invoice.url || invoice.invoice_url || invoice.checkout_url;
+                if (!payUrl) {
+                    console.error('[Bitpapa] No payment URL found in response:', invoice);
+                    throw new Error('No payment URL received from BitPapa');
+                }
+
                 return res.json({
                     success: true,
                     invoiceId: invoice.id || invoice.invoice_id,
-                    payUrl: invoice.payment_url || invoice.url || invoice.invoice_url,
+                    payUrl: payUrl,
                     amount: plan.price,
                     currency: plan.currency,
                     plan: plan.name,
@@ -952,9 +1008,13 @@ app.post('/api/payment/create-invoice', authenticateToken, async (req, res) => {
                 });
             } catch (bitpapaError) {
                 console.error('[Bitpapa] Error creating invoice:', bitpapaError);
+                console.error('[Bitpapa] Error details:', {
+                    message: bitpapaError.message,
+                    stack: bitpapaError.stack
+                });
                 // If Bitpapa fails and provider was explicitly 'bitpapa', throw error
                 if (provider === 'bitpapa') {
-                    throw bitpapaError;
+                    throw new Error(`BitPapa payment failed: ${bitpapaError.message}`);
                 }
                 // Otherwise, fall through to manual
             }
@@ -1140,17 +1200,47 @@ app.get('/api/payment/plans', (req, res) => {
         price: plan.price,
         currency: plan.currency
     }));
-    
+
     const hasWallets = Object.values(WALLET_ADDRESSES).some(addr => addr && addr.trim() !== '');
-    
-    res.json({ 
-        plans, 
+
+    res.json({
+        plans,
         cryptoBotEnabled: !!(NOWPAYMENTS_API_KEY || BITPAPA_API_TOKEN), // Keep name for frontend compatibility
         nowPaymentsEnabled: !!NOWPAYMENTS_API_KEY,
         bitpapaEnabled: !!BITPAPA_API_TOKEN,
         manualPaymentsEnabled: hasWallets,
         wallets: WALLET_ADDRESSES
     });
+});
+
+// Test BitPapa API connection (admin only)
+app.get('/api/payment/test-bitpapa', authenticateToken, async (req, res) => {
+    try {
+        if (!BITPAPA_API_TOKEN) {
+            return res.json({
+                success: false,
+                message: 'BitPapa API token not configured',
+                configured: false
+            });
+        }
+
+        // Try a simple API call to test connectivity
+        const testResponse = await bitpapaRequest('/me', 'GET');
+        res.json({
+            success: true,
+            message: 'BitPapa API connection successful',
+            configured: true,
+            response: testResponse
+        });
+    } catch (error) {
+        console.error('[BitPapa Test] Error:', error.message);
+        res.json({
+            success: false,
+            message: `BitPapa API test failed: ${error.message}`,
+            configured: !!BITPAPA_API_TOKEN,
+            error: error.message
+        });
+    }
 });
 
 // Submit manual payment (user provides transaction hash)
