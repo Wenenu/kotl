@@ -5,18 +5,42 @@ import {
     Typography,
     Box,
     Button,
-    Chip
+    Chip,
+    Tooltip,
+    IconButton
 } from '@mui/material';
+import {
+    Key as KeyIcon,
+    ContentCopy as CopyIcon,
+    Check as CheckIcon
+} from '@mui/icons-material';
 
 const drawerWidth = 240;
 
 function Header({ onLogout }) {
     const [stats, setStats] = useState({ online: 0, all: 0, dead: 0, totalLogs: 0 });
+    const [loginKey, setLoginKey] = useState('');
+    const [copied, setCopied] = useState(false);
 
     useEffect(() => {
+        // Get login key from localStorage
+        const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
+        if (userInfo.username) {
+            setLoginKey(userInfo.username);
+        }
+
         const fetchStats = async () => {
             try {
-                const response = await fetch('/api/stats');
+                const token = localStorage.getItem('authToken');
+                if (!token) {
+                    return; // Don't fetch if not authenticated
+                }
+                
+                const response = await fetch('/api/stats', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
                 if (response.ok) {
                     const jsonData = await response.json();
                     setStats(jsonData);
@@ -31,6 +55,33 @@ function Header({ onLogout }) {
 
         return () => clearInterval(intervalId);
     }, []);
+
+    const handleCopyKey = async () => {
+        if (!loginKey) return;
+        
+        try {
+            await navigator.clipboard.writeText(loginKey);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch (err) {
+            console.error('Failed to copy:', err);
+            // Fallback for older browsers
+            const textArea = document.createElement('textarea');
+            textArea.value = loginKey;
+            textArea.style.position = 'fixed';
+            textArea.style.opacity = '0';
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+            } catch (fallbackErr) {
+                console.error('Fallback copy failed:', fallbackErr);
+            }
+            document.body.removeChild(textArea);
+        }
+    };
 
     return (
         <AppBar
@@ -48,12 +99,33 @@ function Header({ onLogout }) {
                         label={`Logs: ${stats.totalLogs}`} 
                         size="small"
                     />
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {loginKey && (
+                        <Tooltip 
+                            title={copied ? 'Copied!' : loginKey}
+                            arrow
+                            placement="bottom"
+                        >
+                            <IconButton
+                                onClick={handleCopyKey}
+                                sx={{
+                                    color: '#94a3b8',
+                                    '&:hover': {
+                                        color: '#4ade80',
+                                        backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                                    },
+                                }}
+                            >
+                                {copied ? <CheckIcon fontSize="small" /> : <KeyIcon fontSize="small" />}
+                            </IconButton>
+                        </Tooltip>
+                    )}
                     {onLogout && (
                         <Button 
                             variant="outlined"
                             onClick={onLogout}
                             sx={{
-                                ml: 2,
                                 borderColor: '#334155',
                                 color: '#e2e8f0',
                                 borderRadius: '8px',

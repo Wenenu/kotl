@@ -328,8 +328,8 @@ function PurchasePage() {
                 {cryptoBotEnabled ? (
                     <Chip 
                         label={nowPaymentsEnabled 
-                            ? "💎 Pay with Crypto (200+ cryptocurrencies via NOWPayments)" 
-                            : "💎 Pay with Crypto"} 
+                            ? "Pay with Crypto" 
+                            : "Pay with Crypto"} 
                         sx={{ 
                             mt: 2, 
                             backgroundColor: `${themeColors.primary}20`,
@@ -536,13 +536,13 @@ function PurchasePage() {
                 >
                     <Typography variant="body2" sx={{ color: themeColors.textSecondary, mb: 1 }}>
                         <strong style={{ color: themeColors.primary }}>
-                            {cryptoBotEnabled ? '💎 Crypto Payments Enabled' : 'How to purchase:'}
+                            {cryptoBotEnabled ? 'Pay with Crypto' : 'How to purchase:'}
                         </strong>
                     </Typography>
                     <Typography variant="body2" sx={{ color: themeColors.textSecondary }}>
                         {cryptoBotEnabled 
                             ? nowPaymentsEnabled
-                            ? 'Click on a plan to generate a payment invoice. Pay with Bitcoin, Ethereum, USDT, or any of 200+ cryptocurrencies via NOWPayments. Your subscription will be activated automatically after payment confirmation.'
+                            ? 'Click on a plan to generate a payment invoice. Your subscription will be activated automatically after payment confirmation.'
                             : 'Click on a plan to generate a payment invoice. Your subscription will be activated automatically after payment confirmation.'
                             : manualPaymentsEnabled
                             ? 'Click on a plan to see wallet addresses. Send crypto to the provided address and submit your transaction hash. Your subscription will be activated after admin verification.'
