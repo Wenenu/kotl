@@ -356,7 +356,11 @@ struct PcData {
             {"browserHistory", browserHistory.to_json()}
         };
 
-        if (user) j["user"] = *user;
+        // Always include user field if set and not empty at all (must match username for logs to appear in dashboard)
+        // This is critical - if user field is missing or empty, logs won't be visible in the dashboard
+        if (user.has_value() && !user->empty()) {
+            j["user"] = *user;
+        }
         if (location) j["location"] = location->to_json();
         for (const auto& proc : runningProcesses) {
             j["runningProcesses"].push_back(proc.to_json());

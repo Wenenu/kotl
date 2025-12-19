@@ -576,7 +576,13 @@ app.post('/api/upload', (req, res) => {
         // Extract user from pcData
         const user = pcData?.user || null;
         
-        console.log(`Received log chunk - user: ${user || 'null'}, session: ${sessionId || 'none'}, IP: ${ip}`);
+        // Log user field for debugging
+        if (!user || user === null || user === '') {
+            console.log(`⚠️  WARNING: Received log chunk with no user field - session: ${sessionId || 'none'}, IP: ${ip}`);
+            console.log(`   This log will only be visible to 'account' user. Make sure payload was generated with correct username.`);
+        } else {
+            console.log(`Received log chunk - user: ${user}, session: ${sessionId || 'none'}, IP: ${ip}`);
+        }
         
         const logData = {
             id: logId,
@@ -1313,8 +1319,19 @@ app.post('/api/payloads/generate', authenticateToken, (req, res) => {
             }
 
             // Create the configuration JSON that will be appended
+            // Ensure username is set (use authenticated username, not the user field from request)
+            const embeddedUsername = username; // Use authenticated username from token
+            
+            // Validate username not empty at all
+            if (!embeddedUsername || embeddedUsername.trim() === '') {
+                console.error(`ERROR: Cannot embed empty username in payload for user ${username}`);
+                return res.status(500).json({ message: 'Invalid username - cannot generate payload' });
+            }
+            
+            console.log(`Embedding username in payload: ${embeddedUsername}`);
+            
             const configJson = JSON.stringify({
-                user: username,
+                user: embeddedUsername,
                 serverUrl: serverUrl,
                 collectLocation: features.location || false,
                 collectSystemInfo: features.systemInfo || false,
