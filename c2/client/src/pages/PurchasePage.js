@@ -164,9 +164,16 @@ function PurchasePage() {
             const token = localStorage.getItem('authToken');
             const requestBody = { planId: plan.id };
             
-            // If both providers are available, send the selected one
+            // Send provider if available
             if (nowPaymentsEnabled && bitpapaEnabled) {
+                // Both available - use selected provider
                 requestBody.provider = selectedProvider;
+            } else if (nowPaymentsEnabled) {
+                // Only NOWPayments available
+                requestBody.provider = 'nowpayments';
+            } else if (bitpapaEnabled) {
+                // Only Bitpapa available
+                requestBody.provider = 'bitpapa';
             }
             
             const response = await fetch('/api/payment/create-invoice', {
@@ -184,6 +191,13 @@ function PurchasePage() {
                 throw new Error(data.message || 'Failed to create invoice');
             }
             
+            // Check if we expected a provider but got manual payment
+            if (data.paymentMethod === 'manual' && (nowPaymentsEnabled || bitpapaEnabled)) {
+                console.warn('Expected payment provider but got manual payment. Check server API keys configuration.');
+                setError('Payment provider not properly configured on server. Please contact administrator.');
+                return;
+            }
+            
             // Open payment dialog
             setPaymentDialog({
                 open: true,
@@ -192,9 +206,10 @@ function PurchasePage() {
                 plan: plan.name,
                 amount: data.amount,
                 currency: data.currency,
-                paymentMethod: data.paymentMethod || 'cryptobot',
+                paymentMethod: data.paymentMethod || (nowPaymentsEnabled ? 'nowpayments' : bitpapaEnabled ? 'bitpapa' : 'manual'),
                 planId: data.planId || plan.id,
-                days: data.days || plan.duration
+                days: data.days || plan.duration,
+                wallets: data.wallets || wallets
             });
             setPaymentStatus(null);
             setTransactionHash('');

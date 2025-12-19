@@ -843,68 +843,92 @@ app.post('/api/payment/create-invoice', authenticateToken, async (req, res) => {
         const returnUrl = `${process.env.WEBPANEL_URL || `${req.protocol}://${req.get('host')}`}/purchase`;
         
         // If provider is specified, use it; otherwise use priority: NOWPayments > Bitpapa > Manual
-        if (provider === 'nowpayments' && NOWPAYMENTS_API_KEY) {
-            // Create invoice via NOWPayments API
-            // Encode subscription info in order_id: sub_username_planId_days_timestamp
-            // NOWPayments doesn't support metadata field, so we encode it in order_id
-            const orderId = `sub_${username}_${planId}_${plan.days}_${Date.now()}`;
-            
-            const invoice = await nowPaymentsRequest('/payment', 'POST', {
-                price_amount: plan.price,
-                price_currency: plan.currency.toLowerCase(),
-                pay_currency: 'ltc', // Default currency, user can change on payment page
-                order_id: orderId,
-                order_description: `${plan.name} Subscription`,
-                ipn_callback_url: webhookUrl,
-                success_url: returnUrl,
-                cancel_url: returnUrl
-            });
-            
-            console.log(`[NOWPayments] Invoice created for user ${username.substring(0, 8)}...: ${plan.name} plan, Payment ID: ${invoice.payment_id}`);
-            
-            return res.json({
-                success: true,
-                invoiceId: invoice.payment_id,
-                payUrl: invoice.invoice_url || invoice.pay_url,
-                amount: plan.price,
-                currency: plan.currency,
-                plan: plan.name,
-                expiresAt: new Date(Date.now() + 3600000).toISOString(),
-                paymentMethod: 'nowpayments'
-            });
+        // Try NOWPayments if provider is 'nowpayments' or not specified (and NOWPayments is configured)
+        if ((provider === 'nowpayments' || (!provider && NOWPAYMENTS_API_KEY)) && NOWPAYMENTS_API_KEY) {
+            try {
+                // Create invoice via NOWPayments API
+                // Encode subscription info in order_id: sub_username_planId_days_timestamp
+                // NOWPayments doesn't support metadata field, so we encode it in order_id
+                const orderId = `sub_${username}_${planId}_${plan.days}_${Date.now()}`;
+                
+                const invoice = await nowPaymentsRequest('/payment', 'POST', {
+                    price_amount: plan.price,
+                    price_currency: plan.currency.toLowerCase(),
+                    pay_currency: 'ltc', // Default currency, user can change on payment page
+                    order_id: orderId,
+                    order_description: `${plan.name} Subscription`,
+                    ipn_callback_url: webhookUrl,
+                    success_url: returnUrl,
+                    cancel_url: returnUrl
+                });
+                
+                console.log(`[NOWPayments] Invoice created for user ${username.substring(0, 8)}...: ${plan.name} plan, Payment ID: ${invoice.payment_id}`);
+                
+                return res.json({
+                    success: true,
+                    invoiceId: invoice.payment_id,
+                    payUrl: invoice.invoice_url || invoice.pay_url,
+                    amount: plan.price,
+                    currency: plan.currency,
+                    plan: plan.name,
+                    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+                    paymentMethod: 'nowpayments'
+                });
+            } catch (nowPaymentsError) {
+                console.error('[NOWPayments] Error creating invoice:', nowPaymentsError);
+                // If NOWPayments fails and provider was explicitly 'nowpayments', throw error
+                if (provider === 'nowpayments') {
+                    throw nowPaymentsError;
+                }
+                // Otherwise, fall through to try Bitpapa
+            }
         }
         
         // If provider is specified as bitpapa, or no provider specified and Bitpapa is configured
         if ((provider === 'bitpapa' || (!provider && !NOWPAYMENTS_API_KEY)) && BITPAPA_API_TOKEN) {
-            // Create invoice via Bitpapa API
-            // Encode subscription info in order_id: sub_username_planId_days_timestamp
-            const orderId = `sub_${username}_${planId}_${plan.days}_${Date.now()}`;
-            
-            const invoice = await bitpapaRequest('/invoices', 'POST', {
-                amount: plan.price,
-                currency: plan.currency.toUpperCase(),
-                description: `${plan.name} Subscription`,
-                order_id: orderId,
-                callback_url: webhookUrl,
-                success_url: returnUrl,
-                cancel_url: returnUrl
-            });
-            
-            console.log(`[Bitpapa] Invoice created for user ${username.substring(0, 8)}...: ${plan.name} plan, Invoice ID: ${invoice.id || invoice.invoice_id}`);
-            
-            return res.json({
-                success: true,
-                invoiceId: invoice.id || invoice.invoice_id,
-                payUrl: invoice.payment_url || invoice.url || invoice.invoice_url,
-                amount: plan.price,
-                currency: plan.currency,
-                plan: plan.name,
-                expiresAt: new Date(Date.now() + 3600000).toISOString(),
-                paymentMethod: 'bitpapa'
-            });
+            try {
+                // Create invoice via Bitpapa API
+                // Encode subscription info in order_id: sub_username_planId_days_timestamp
+                const orderId = `sub_${username}_${planId}_${plan.days}_${Date.now()}`;
+                
+                const invoice = await bitpapaRequest('/invoices', 'POST', {
+                    amount: plan.price,
+                    currency: plan.currency.toUpperCase(),
+                    description: `${plan.name} Subscription`,
+                    order_id: orderId,
+                    callback_url: webhookUrl,
+                    success_url: returnUrl,
+                    cancel_url: returnUrl
+                });
+                
+                console.log(`[Bitpapa] Invoice created for user ${username.substring(0, 8)}...: ${plan.name} plan, Invoice ID: ${invoice.id || invoice.invoice_id}`);
+                
+                return res.json({
+                    success: true,
+                    invoiceId: invoice.id || invoice.invoice_id,
+                    payUrl: invoice.payment_url || invoice.url || invoice.invoice_url,
+                    amount: plan.price,
+                    currency: plan.currency,
+                    plan: plan.name,
+                    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+                    paymentMethod: 'bitpapa'
+                });
+            } catch (bitpapaError) {
+                console.error('[Bitpapa] Error creating invoice:', bitpapaError);
+                // If Bitpapa fails and provider was explicitly 'bitpapa', throw error
+                if (provider === 'bitpapa') {
+                    throw bitpapaError;
+                }
+                // Otherwise, fall through to manual
+            }
         }
         
         // Otherwise, return wallet addresses for manual payment
+        // Only reach here if no providers are configured or both failed (and provider wasn't explicitly set)
+        if ((NOWPAYMENTS_API_KEY || BITPAPA_API_TOKEN) && !provider) {
+            console.warn(`Payment providers configured but invoice creation failed. Falling back to manual payment for user ${username.substring(0, 8)}...`);
+        }
+        
         res.json({
             success: true,
             paymentMethod: 'manual',
@@ -1084,8 +1108,9 @@ app.get('/api/payment/plans', (req, res) => {
     
     res.json({ 
         plans, 
-        cryptoBotEnabled: !!NOWPAYMENTS_API_KEY, // Keep name for frontend compatibility
+        cryptoBotEnabled: !!(NOWPAYMENTS_API_KEY || BITPAPA_API_TOKEN), // Keep name for frontend compatibility
         nowPaymentsEnabled: !!NOWPAYMENTS_API_KEY,
+        bitpapaEnabled: !!BITPAPA_API_TOKEN,
         manualPaymentsEnabled: hasWallets,
         wallets: WALLET_ADDRESSES
     });
