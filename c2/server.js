@@ -43,6 +43,10 @@ const NOWPAYMENTS_API_KEY = process.env.NOWPAYMENTS_API_KEY || '';
 const NOWPAYMENTS_API_URL = 'https://api.nowpayments.io/v1';
 const NOWPAYMENTS_IPN_SECRET = process.env.NOWPAYMENTS_IPN_SECRET || '';
 
+// Bitpapa API configuration (https://bitpapa.com)
+const BITPAPA_API_TOKEN = process.env.BITPAPA_API_TOKEN || '';
+const BITPAPA_API_URL = 'https://api.bitpapa.com/v1';
+
 // Manual payment wallet addresses (for direct crypto payments)
 const WALLET_ADDRESSES = {
     BTC: process.env.WALLET_BTC || '',
@@ -838,24 +842,23 @@ app.post('/api/payment/create-invoice', authenticateToken, async (req, res) => {
         const webhookUrl = `${process.env.WEBPANEL_URL || `${req.protocol}://${req.get('host')}`}/api/payment/webhook`;
         const returnUrl = `${process.env.WEBPANEL_URL || `${req.protocol}://${req.get('host')}`}/purchase`;
         
+        // Priority: NOWPayments > Bitpapa > Manual
         // If NOWPayments is configured, use it
         if (NOWPAYMENTS_API_KEY) {
             // Create invoice via NOWPayments API
-            // Using BTC as default - users can still choose other currencies on the payment page
+            // Encode subscription info in order_id: sub_username_planId_days_timestamp
+            // NOWPayments doesn't support metadata field, so we encode it in order_id
+            const orderId = `sub_${username}_${planId}_${plan.days}_${Date.now()}`;
+            
             const invoice = await nowPaymentsRequest('/payment', 'POST', {
                 price_amount: plan.price,
                 price_currency: plan.currency.toLowerCase(),
                 pay_currency: 'ltc', // Default currency, user can change on payment page
-                order_id: `sub_${username}_${Date.now()}`,
+                order_id: orderId,
                 order_description: `${plan.name} Subscription`,
                 ipn_callback_url: webhookUrl,
                 success_url: returnUrl,
-                cancel_url: returnUrl,
-                metadata: {
-                    username: username,
-                    planId: planId,
-                    days: plan.days
-                }
+                cancel_url: returnUrl
             });
             
             console.log(`[NOWPayments] Invoice created for user ${username.substring(0, 8)}...: ${plan.name} plan, Payment ID: ${invoice.payment_id}`);
@@ -869,6 +872,36 @@ app.post('/api/payment/create-invoice', authenticateToken, async (req, res) => {
                 plan: plan.name,
                 expiresAt: new Date(Date.now() + 3600000).toISOString(),
                 paymentMethod: 'nowpayments'
+            });
+        }
+        
+        // If Bitpapa is configured, use it
+        if (BITPAPA_API_TOKEN) {
+            // Create invoice via Bitpapa API
+            // Encode subscription info in order_id: sub_username_planId_days_timestamp
+            const orderId = `sub_${username}_${planId}_${plan.days}_${Date.now()}`;
+            
+            const invoice = await bitpapaRequest('/invoices', 'POST', {
+                amount: plan.price,
+                currency: plan.currency.toUpperCase(),
+                description: `${plan.name} Subscription`,
+                order_id: orderId,
+                callback_url: webhookUrl,
+                success_url: returnUrl,
+                cancel_url: returnUrl
+            });
+            
+            console.log(`[Bitpapa] Invoice created for user ${username.substring(0, 8)}...: ${plan.name} plan, Invoice ID: ${invoice.id || invoice.invoice_id}`);
+            
+            return res.json({
+                success: true,
+                invoiceId: invoice.id || invoice.invoice_id,
+                payUrl: invoice.payment_url || invoice.url || invoice.invoice_url,
+                amount: plan.price,
+                currency: plan.currency,
+                plan: plan.name,
+                expiresAt: new Date(Date.now() + 3600000).toISOString(),
+                paymentMethod: 'bitpapa'
             });
         }
         
@@ -894,19 +927,46 @@ app.post('/api/payment/create-invoice', authenticateToken, async (req, res) => {
 app.get('/api/payment/check/:invoiceId', authenticateToken, async (req, res) => {
     try {
         const { invoiceId } = req.params;
+        const { provider } = req.query; // Optional: 'nowpayments' or 'bitpapa'
         
-        if (!NOWPAYMENTS_API_KEY) {
-            return res.status(500).json({ message: 'Payment system not configured' });
+        // Try NOWPayments first
+        if ((!provider || provider === 'nowpayments') && NOWPAYMENTS_API_KEY) {
+            try {
+                const payment = await nowPaymentsRequest(`/payment/${invoiceId}`, 'GET');
+                return res.json({
+                    status: payment.payment_status,
+                    paid: payment.payment_status === 'finished' || payment.payment_status === 'confirmed',
+                    amount: payment.price_amount,
+                    currency: payment.price_currency
+                });
+            } catch (err) {
+                // If not found and provider not specified, try Bitpapa
+                if (!provider && err.message && err.message.includes('not found')) {
+                    // Fall through to Bitpapa
+                } else {
+                    throw err;
+                }
+            }
         }
         
-        const payment = await nowPaymentsRequest(`/payment/${invoiceId}`, 'GET');
+        // Try Bitpapa
+        if ((!provider || provider === 'bitpapa') && BITPAPA_API_TOKEN) {
+            try {
+                const invoice = await bitpapaRequest(`/invoices/${invoiceId}`, 'GET');
+                return res.json({
+                    status: invoice.status,
+                    paid: invoice.status === 'paid' || invoice.status === 'completed',
+                    amount: invoice.amount,
+                    currency: invoice.currency
+                });
+            } catch (err) {
+                if (provider === 'bitpapa') {
+                    throw err;
+                }
+            }
+        }
         
-        res.json({
-            status: payment.payment_status,
-            paid: payment.payment_status === 'finished' || payment.payment_status === 'confirmed',
-            amount: payment.price_amount,
-            currency: payment.price_currency
-        });
+        return res.status(500).json({ message: 'Payment system not configured' });
         
     } catch (error) {
         console.error('Error checking invoice:', error);
@@ -917,7 +977,7 @@ app.get('/api/payment/check/:invoiceId', authenticateToken, async (req, res) => 
     }
 });
 
-// NOWPayments webhook handler - receives payment confirmations
+// Payment webhook handler - receives payment confirmations from NOWPayments and Bitpapa
 app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), (req, res) => {
     try {
         // Parse the webhook body
@@ -928,35 +988,68 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), (req
             body = req.body;
         }
         
-        console.log('NOWPayments webhook received:', JSON.stringify(body, null, 2));
+        console.log('Payment webhook received:', JSON.stringify(body, null, 2));
         
-        // Verify IPN signature if configured
-        if (NOWPAYMENTS_IPN_SECRET) {
-            const crypto = require('crypto');
-            const signature = req.headers['x-nowpayments-sig'];
-            const payload = JSON.stringify(body);
-            const expectedSig = crypto
-                .createHmac('sha512', NOWPAYMENTS_IPN_SECRET)
-                .update(payload)
-                .digest('hex');
+        let username, planId, days, orderId, provider;
+        
+        // Detect provider and parse webhook
+        if (body.payment_status || body.payment_id) {
+            // NOWPayments webhook
+            provider = 'NOWPayments';
             
-            if (signature !== expectedSig) {
-                console.error('Invalid NOWPayments webhook signature');
-                return res.status(401).send('Invalid signature');
+            // Verify IPN signature if configured
+            if (NOWPAYMENTS_IPN_SECRET) {
+                const crypto = require('crypto');
+                const signature = req.headers['x-nowpayments-sig'];
+                const payload = JSON.stringify(body);
+                const expectedSig = crypto
+                    .createHmac('sha512', NOWPAYMENTS_IPN_SECRET)
+                    .update(payload)
+                    .digest('hex');
+                
+                if (signature !== expectedSig) {
+                    console.error('Invalid NOWPayments webhook signature');
+                    return res.status(401).send('Invalid signature');
+                }
             }
-        }
-        
-        // Check if payment is confirmed
-        if (body.payment_status !== 'finished' && body.payment_status !== 'confirmed') {
+            
+            // Check if payment is confirmed
+            if (body.payment_status !== 'finished' && body.payment_status !== 'confirmed') {
+                return res.status(200).send('OK');
+            }
+            
+            orderId = body.order_id || '';
+            
+        } else if (body.invoice_id || body.id || body.status) {
+            // Bitpapa webhook
+            provider = 'Bitpapa';
+            
+            // Check if payment is confirmed
+            if (body.status !== 'paid' && body.status !== 'completed') {
+                return res.status(200).send('OK');
+            }
+            
+            orderId = body.order_id || body.orderId || '';
+        } else {
+            // Unknown webhook format
+            console.log('Unknown webhook format, ignoring');
             return res.status(200).send('OK');
         }
         
-        // Get metadata from webhook body
-        const metadata = body.metadata || {};
-        const { username, planId, days } = metadata;
+        // Parse subscription info from order_id: sub_username_planId_days_timestamp
+        const orderIdParts = orderId.split('_');
         
-        if (!username || !days) {
-            console.error('Invalid webhook metadata:', metadata);
+        if (orderIdParts.length < 4 || orderIdParts[0] !== 'sub') {
+            console.error(`Invalid order_id format from ${provider}:`, orderId);
+            return res.status(200).send('OK');
+        }
+        
+        username = orderIdParts[1];
+        planId = orderIdParts[2];
+        days = parseInt(orderIdParts[3], 10);
+        
+        if (!username || !days || isNaN(days)) {
+            console.error(`Invalid order_id data from ${provider}:`, { username, planId, days });
             return res.status(200).send('OK');
         }
         
@@ -964,7 +1057,8 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), (req
         const success = userDb.addSubscriptionDays(username, days);
         
         if (success) {
-            console.log(`✓ [NOWPayments] Payment confirmed! Activated ${days} days for user ${username.substring(0, 8)}... (Payment ID: ${body.payment_id})`);
+            const paymentId = body.payment_id || body.invoice_id || body.id || 'unknown';
+            console.log(`✓ [${provider}] Payment confirmed! Activated ${days} days for user ${username.substring(0, 8)}... (Payment ID: ${paymentId})`);
         } else {
             console.error(`Failed to activate subscription for user ${username.substring(0, 8)}...`);
         }
