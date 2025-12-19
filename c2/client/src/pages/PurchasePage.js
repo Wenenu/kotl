@@ -42,7 +42,6 @@ function PurchasePage() {
     });
     const [cryptoBotEnabled, setCryptoBotEnabled] = useState(false);
     const [nowPaymentsEnabled, setNowPaymentsEnabled] = useState(false);
-    const [bitpapaEnabled, setBitpapaEnabled] = useState(false);
     const [manualPaymentsEnabled, setManualPaymentsEnabled] = useState(false);
     const [wallets, setWallets] = useState({});
     const [selectedProvider, setSelectedProvider] = useState('nowpayments');
@@ -86,15 +85,12 @@ function PurchasePage() {
                 const data = await response.json();
                 setCryptoBotEnabled(data.cryptoBotEnabled);
                 setNowPaymentsEnabled(data.nowPaymentsEnabled || false);
-                setBitpapaEnabled(data.bitpapaEnabled || false);
                 setManualPaymentsEnabled(data.manualPaymentsEnabled);
                 setWallets(data.wallets || {});
                 
                 // Set default provider based on what's available
                 if (data.nowPaymentsEnabled) {
                     setSelectedProvider('nowpayments');
-                } else if (data.bitpapaEnabled) {
-                    setSelectedProvider('bitpapa');
                 }
             }
         } catch (err) {
@@ -165,15 +161,8 @@ function PurchasePage() {
             const requestBody = { planId: plan.id };
             
             // Send provider if available
-            if (nowPaymentsEnabled && bitpapaEnabled) {
-                // Both available - use selected provider
-                requestBody.provider = selectedProvider;
-            } else if (nowPaymentsEnabled) {
-                // Only NOWPayments available
+            if (nowPaymentsEnabled) {
                 requestBody.provider = 'nowpayments';
-            } else if (bitpapaEnabled) {
-                // Only Bitpapa available
-                requestBody.provider = 'bitpapa';
             }
             
             const response = await fetch('/api/payment/create-invoice', {
@@ -192,7 +181,7 @@ function PurchasePage() {
             }
             
             // Check if we expected a provider but got manual payment
-            if (data.paymentMethod === 'manual' && (nowPaymentsEnabled || bitpapaEnabled)) {
+            if (data.paymentMethod === 'manual' && nowPaymentsEnabled) {
                 console.warn('Expected payment provider but got manual payment. Check server API keys configuration.');
                 setError('Payment provider not properly configured on server. Please contact administrator.');
                 return;
@@ -206,7 +195,7 @@ function PurchasePage() {
                 plan: plan.name,
                 amount: data.amount,
                 currency: data.currency,
-                paymentMethod: data.paymentMethod || (nowPaymentsEnabled ? 'nowpayments' : bitpapaEnabled ? 'bitpapa' : 'manual'),
+                paymentMethod: data.paymentMethod || (nowPaymentsEnabled ? 'nowpayments' : 'manual'),
                 planId: data.planId || plan.id,
                 days: data.days || plan.duration,
                 wallets: data.wallets || wallets
@@ -236,8 +225,7 @@ function PurchasePage() {
         
         try {
             const token = localStorage.getItem('authToken');
-            const provider = paymentDialog.paymentMethod === 'bitpapa' ? 'bitpapa' : 'nowpayments';
-            const response = await fetch(`/api/payment/check/${paymentDialog.invoiceId}?provider=${provider}`, {
+            const response = await fetch(`/api/payment/check/${paymentDialog.invoiceId}?provider=nowpayments`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -339,12 +327,8 @@ function PurchasePage() {
                 </Typography>
                 {cryptoBotEnabled ? (
                     <Chip 
-                        label={nowPaymentsEnabled && bitpapaEnabled 
-                            ? "💎 Pay with Crypto (Choose Provider)" 
-                            : nowPaymentsEnabled 
+                        label={nowPaymentsEnabled 
                             ? "💎 Pay with Crypto (200+ cryptocurrencies via NOWPayments)" 
-                            : bitpapaEnabled 
-                            ? "💎 Pay with Crypto (via Bitpapa)" 
                             : "💎 Pay with Crypto"} 
                         sx={{ 
                             mt: 2, 
@@ -390,48 +374,6 @@ function PurchasePage() {
                 </Alert>
             )}
 
-            {/* Provider Selection (if both are available) */}
-            {nowPaymentsEnabled && bitpapaEnabled && (
-                <Box sx={{ mb: 3, display: 'flex', justifyContent: 'center' }}>
-                    <Paper sx={{ p: 2, backgroundColor: themeColors.paper, border: `1px solid ${themeColors.textSecondary}33` }}>
-                        <Typography variant="body2" sx={{ color: themeColors.textSecondary, mb: 1.5, textAlign: 'center' }}>
-                            Choose Payment Provider:
-                        </Typography>
-                        <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
-                            <Button
-                                variant={selectedProvider === 'nowpayments' ? 'contained' : 'outlined'}
-                                onClick={() => setSelectedProvider('nowpayments')}
-                                sx={{
-                                    ...(selectedProvider === 'nowpayments' ? {
-                                        backgroundColor: themeColors.primary,
-                                        color: themeColors.background,
-                                    } : {
-                                        borderColor: themeColors.textSecondary,
-                                        color: themeColors.textPrimary,
-                                    })
-                                }}
-                            >
-                                NOWPayments (200+ coins)
-                            </Button>
-                            <Button
-                                variant={selectedProvider === 'bitpapa' ? 'contained' : 'outlined'}
-                                onClick={() => setSelectedProvider('bitpapa')}
-                                sx={{
-                                    ...(selectedProvider === 'bitpapa' ? {
-                                        backgroundColor: themeColors.primary,
-                                        color: themeColors.background,
-                                    } : {
-                                        borderColor: themeColors.textSecondary,
-                                        color: themeColors.textPrimary,
-                                    })
-                                }}
-                            >
-                                Bitpapa
-                            </Button>
-                        </Box>
-                    </Paper>
-                </Box>
-            )}
 
             <Grid container spacing={3} justifyContent="center">
                 {plans.map((plan) => (
@@ -455,26 +397,6 @@ function PurchasePage() {
                                 },
                             }}
                         >
-                            {/* Popular Badge */}
-                            {plan.popular && (
-                                <Box
-                                    sx={{
-                                        position: 'absolute',
-                                        top: 16,
-                                        right: -32,
-                                        backgroundColor: themeColors.primary,
-                                        color: themeColors.background,
-                                        px: 4,
-                                        py: 0.5,
-                                        transform: 'rotate(45deg)',
-                                        fontSize: '0.7rem',
-                                        fontWeight: 700,
-                                    }}
-                                >
-                                    POPULAR
-                                </Box>
-                            )}
-
                             {/* Header */}
                             <Box 
                                 sx={{ 
@@ -619,12 +541,8 @@ function PurchasePage() {
                     </Typography>
                     <Typography variant="body2" sx={{ color: themeColors.textSecondary }}>
                         {cryptoBotEnabled 
-                            ? nowPaymentsEnabled && bitpapaEnabled
-                            ? 'Click on a plan to generate a payment invoice. Choose between NOWPayments (200+ cryptocurrencies) or Bitpapa. Your subscription will be activated automatically after payment confirmation.'
-                            : nowPaymentsEnabled
+                            ? nowPaymentsEnabled
                             ? 'Click on a plan to generate a payment invoice. Pay with Bitcoin, Ethereum, USDT, or any of 200+ cryptocurrencies via NOWPayments. Your subscription will be activated automatically after payment confirmation.'
-                            : bitpapaEnabled
-                            ? 'Click on a plan to generate a payment invoice. Pay with cryptocurrency via Bitpapa. Your subscription will be activated automatically after payment confirmation.'
                             : 'Click on a plan to generate a payment invoice. Your subscription will be activated automatically after payment confirmation.'
                             : manualPaymentsEnabled
                             ? 'Click on a plan to see wallet addresses. Send crypto to the provided address and submit your transaction hash. Your subscription will be activated after admin verification.'
@@ -791,9 +709,7 @@ function PurchasePage() {
                         ) : (
                             <>
                                 <Typography variant="body2" sx={{ color: themeColors.textSecondary, mb: 3, textAlign: 'center' }}>
-                                    {paymentDialog.paymentMethod === 'bitpapa' 
-                                        ? 'Click the button below to open the payment page. You can pay with cryptocurrency via Bitpapa.'
-                                        : 'Click the button below to open the payment page. You can pay with BTC, ETH, USDT, or any of 200+ cryptocurrencies via NOWPayments.'}
+                                    Click the button below to open the payment page. You can pay with BTC, ETH, USDT, or any of 200+ cryptocurrencies via NOWPayments.
                                 </Typography>
                                 
                                 <Button
@@ -817,7 +733,7 @@ function PurchasePage() {
                                         }
                                     }}
                                 >
-                                    {paymentDialog.paymentMethod === 'bitpapa' ? 'Open Bitpapa Payment' : 'Open NOWPayments'}
+                                    Open NOWPayments
                                 </Button>
                                 
                                 <Box sx={{ mt: 2, textAlign: 'center' }}>
