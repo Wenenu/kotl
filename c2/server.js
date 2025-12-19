@@ -44,7 +44,7 @@ const NOWPAYMENTS_API_URL = 'https://api.nowpayments.io/v1';
 const NOWPAYMENTS_IPN_SECRET = process.env.NOWPAYMENTS_IPN_SECRET || '';
 
 
-// Manual payment wallet addresses (for direct crypto payments)
+// Manual payment wallet addresses (for direct crypto payment)
 const WALLET_ADDRESSES = {
     BTC: process.env.WALLET_BTC || '',
     ETH: process.env.WALLET_ETH || '',
@@ -253,37 +253,37 @@ const authenticateToken = (req, res, next) => {
 
 // API Endpoints
 
-// Authentication endpoint - Key-based login
+// Authentication endpoint - Username/Password login
 app.post('/api/auth/login', (req, res) => {
     try {
-        const { key } = req.body;
+        const { username, password } = req.body;
         const ipAddress = getClientIp(req);
         const userAgent = req.headers['user-agent'] || 'Unknown';
 
-        if (!key) {
+        if (!username || !password) {
             loginAttemptsDb.create('unknown', ipAddress, false, userAgent);
-            return res.status(400).json({ message: 'Access key is required' });
+            return res.status(400).json({ message: 'Username and password are required' });
         }
 
-        // Find user by access key (stored as username)
-        const user = userDb.findByUsername(key);
+        // Find user by username
+        const user = userDb.findByUsername(username);
 
         if (!user) {
-            loginAttemptsDb.create(key.substring(0, 8) + '...', ipAddress, false, userAgent);
-            return res.status(401).json({ message: 'Invalid access key' });
+            loginAttemptsDb.create(username, ipAddress, false, userAgent);
+            return res.status(401).json({ message: 'Invalid username or password' });
         }
 
-        // Verify the key against the password hash
-        const keyValid = bcrypt.compareSync(key, user.password_hash);
+        // Verify the password against the password hash
+        const passwordValid = bcrypt.compareSync(password, user.password_hash);
         
-        if (!keyValid) {
-            loginAttemptsDb.create(key.substring(0, 8) + '...', ipAddress, false, userAgent);
-            return res.status(401).json({ message: 'Invalid access key' });
+        if (!passwordValid) {
+            loginAttemptsDb.create(username, ipAddress, false, userAgent);
+            return res.status(401).json({ message: 'Invalid username or password' });
         }
 
         // Log successful login attempt
-        loginAttemptsDb.create(key.substring(0, 8) + '...', ipAddress, true, userAgent);
-        userDb.updateLastLogin(key);
+        loginAttemptsDb.create(username, ipAddress, true, userAgent);
+        userDb.updateLastLogin(username);
 
         // Generate JWT token
         const token = jwt.sign(
@@ -292,7 +292,7 @@ app.post('/api/auth/login', (req, res) => {
             { expiresIn: '24h' }
         );
         
-        console.log(`User logged in successfully from ${ipAddress} at ${new Date().toISOString()}`);
+        console.log(`User ${username} logged in successfully from ${ipAddress} at ${new Date().toISOString()}`);
 
         res.json({
             success: true,
@@ -323,35 +323,45 @@ app.get('/api/auth/login-history', authenticateToken, (req, res) => {
     }
 });
 
-// Public registration endpoint - creates account with access key
+// Public registration endpoint - creates account with username and password
 app.post('/api/auth/register', (req, res) => {
     try {
-        const { key } = req.body;
+        const { username, password } = req.body;
         const ipAddress = getClientIp(req);
 
-        if (!key) {
-            return res.status(400).json({ message: 'Access key is required' });
+        if (!username || !password) {
+            return res.status(400).json({ message: 'Username and password are required' });
         }
 
-        if (key.length !== 20) {
-            return res.status(400).json({ message: 'Access key must be exactly 20 characters' });
+        // Validate username
+        if (username.length < 3) {
+            return res.status(400).json({ message: 'Username must be at least 3 characters long' });
         }
 
-        // Validate key contains only letters
-        if (!/^[a-zA-Z]+$/.test(key)) {
-            return res.status(400).json({ message: 'Access key must contain only letters' });
+        if (username.length > 50) {
+            return res.status(400).json({ message: 'Username must be less than 50 characters' });
         }
 
-        // Hash the key and create user (key is stored as both username and password hash)
-        const keyHash = bcrypt.hashSync(key, 10);
+        // Validate username contains only alphanumeric and underscore
+        if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+            return res.status(400).json({ message: 'Username can only contain letters, numbers, and underscores' });
+        }
+
+        // Validate password
+        if (password.length < 6) {
+            return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+        }
+
+        // Hash the password
+        const passwordHash = bcrypt.hashSync(password, 10);
         
         try {
-            const newUser = userDb.create(key, keyHash);
-            console.log(`New user registered from ${ipAddress} at ${new Date().toISOString()}`);
+            const newUser = userDb.create(username, passwordHash);
+            console.log(`New user ${username} registered from ${ipAddress} at ${new Date().toISOString()}`);
             res.json({ success: true, message: 'Account created successfully' });
         } catch (error) {
             if (error.message === 'Username already exists') {
-                return res.status(400).json({ message: 'This access key is already registered. Please generate a new one.' });
+                return res.status(400).json({ message: 'This username is already taken. Please choose a different one.' });
             }
             throw error;
         }
@@ -360,10 +370,6 @@ app.post('/api/auth/register', (req, res) => {
         res.status(500).json({ message: 'Internal server error' });
     }
 });
-
-// Note: With key-based authentication, changing keys is not supported
-// Users who lose their key must create a new account
-// Admin can delete old accounts and users can register new ones
 
 // Get all users (admin only)
 app.get('/api/auth/users', authenticateToken, (req, res) => {
