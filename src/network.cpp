@@ -17,20 +17,28 @@
 using json = nlohmann::json;
 
 bool send_chunk(const std::string& serverUrl, const std::string& sessionId, const PcData& pcData) {
+    HINTERNET hSession = nullptr;
+    HINTERNET hConnect = nullptr;
+    HINTERNET hRequest = nullptr;
+    
     try {
         // Convert PcData to JSON
         json jsonBody = pcData.to_json();
         std::string jsonString = jsonBody.dump();
 
-        // Initialize WinHTTP
-        HINTERNET hSession = WinHttpOpen(L"DataCollector/1.0",
-                                       WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-                                       WINHTTP_NO_PROXY_NAME,
-                                       WINHTTP_NO_PROXY_BYPASS,
-                                       0);
+        // Initialize WinHTTP with timeouts
+        hSession = WinHttpOpen(L"DataCollector/1.0",
+                               WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                               WINHTTP_NO_PROXY_NAME,
+                               WINHTTP_NO_PROXY_BYPASS,
+                               0);
         if (!hSession) {
             return false;
         }
+
+        // Set session timeouts (resolve, connect, send, receive)
+        DWORD sessionTimeout = 30000; // 30 seconds
+        WinHttpSetTimeouts(hSession, sessionTimeout, sessionTimeout, sessionTimeout, sessionTimeout);
 
         // Parse URL
         URL_COMPONENTSW urlComp = { sizeof(URL_COMPONENTSW) };
@@ -49,24 +57,28 @@ bool send_chunk(const std::string& serverUrl, const std::string& sessionId, cons
         std::wstring urlPath(urlComp.lpszUrlPath, urlComp.dwUrlPathLength);
 
         // Connect to server
-        HINTERNET hConnect = WinHttpConnect(hSession, hostName.c_str(),
-                                          urlComp.nPort, 0);
+        hConnect = WinHttpConnect(hSession, hostName.c_str(),
+                                  urlComp.nPort, 0);
         if (!hConnect) {
             WinHttpCloseHandle(hSession);
             return false;
         }
 
         // Create request
-        HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"POST", urlPath.c_str(),
-                                               nullptr, WINHTTP_NO_REFERER,
-                                               WINHTTP_DEFAULT_ACCEPT_TYPES,
-                                               urlComp.nScheme == INTERNET_SCHEME_HTTPS ?
-                                               WINHTTP_FLAG_SECURE : 0);
+        hRequest = WinHttpOpenRequest(hConnect, L"POST", urlPath.c_str(),
+                                     nullptr, WINHTTP_NO_REFERER,
+                                     WINHTTP_DEFAULT_ACCEPT_TYPES,
+                                     urlComp.nScheme == INTERNET_SCHEME_HTTPS ?
+                                     WINHTTP_FLAG_SECURE : 0);
         if (!hRequest) {
             WinHttpCloseHandle(hConnect);
             WinHttpCloseHandle(hSession);
             return false;
         }
+
+        // Set request timeouts (resolve, connect, send, receive)
+        DWORD requestTimeout = 30000; // 30 seconds
+        WinHttpSetTimeouts(hRequest, requestTimeout, requestTimeout, requestTimeout, requestTimeout);
 
         // Set headers
         std::wstring sessionHeader = L"X-Session-Id: " + std::wstring(sessionId.begin(), sessionId.end());
@@ -109,6 +121,9 @@ bool send_chunk(const std::string& serverUrl, const std::string& sessionId, cons
         return bResult != FALSE;
 
     } catch (const std::exception&) {
+        if (hRequest) WinHttpCloseHandle(hRequest);
+        if (hConnect) WinHttpCloseHandle(hConnect);
+        if (hSession) WinHttpCloseHandle(hSession);
         return false;
     }
 }
