@@ -6,34 +6,20 @@ import {
     Button,
     Typography,
     Container,
-    IconButton,
-    InputAdornment,
-    Tooltip,
-    Fade,
 } from '@mui/material';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import CheckIcon from '@mui/icons-material/Check';
-import KeyIcon from '@mui/icons-material/Key';
+import PersonIcon from '@mui/icons-material/Person';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import LoginIcon from '@mui/icons-material/Login';
 
-// Generate a random 20-character key with uppercase and lowercase letters
-const generateAccessKey = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-    let key = '';
-    for (let i = 0; i < 20; i++) {
-        key += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return key;
-};
-
 function Login({ onLogin }) {
-    const [accessKey, setAccessKey] = useState('');
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [registerUsername, setRegisterUsername] = useState('');
+    const [registerPassword, setRegisterPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [isRegisterView, setIsRegisterView] = useState(false);
-    const [generatedKey, setGeneratedKey] = useState('');
-    const [copied, setCopied] = useState(false);
     const [registerSuccess, setRegisterSuccess] = useState(false);
 
     const handleLogin = async (e) => {
@@ -41,8 +27,8 @@ function Login({ onLogin }) {
         setError('');
         setLoading(true);
 
-        if (!accessKey) {
-            setError('Please enter your login key');
+        if (!username || !password) {
+            setError('Please enter your username and password');
             setLoading(false);
             return;
         }
@@ -53,7 +39,7 @@ function Login({ onLogin }) {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ key: accessKey }),
+                body: JSON.stringify({ username, password }),
                 credentials: 'same-origin',
             });
 
@@ -66,7 +52,7 @@ function Login({ onLogin }) {
 
             const data = await response.json();
 
-            // Get location info
+            // Get location 
             let locationInfo = null;
             try {
                 const locationResponse = await fetch('https://freeipapi.com/api/json');
@@ -98,9 +84,34 @@ function Login({ onLogin }) {
         }
     };
 
-    const handleRegister = async () => {
+    const handleRegister = async (e) => {
+        e.preventDefault();
         setError('');
         setLoading(true);
+
+        if (!registerUsername || !registerPassword || !confirmPassword) {
+            setError('Please fill in all fields');
+            setLoading(false);
+            return;
+        }
+
+        if (registerUsername.length < 3) {
+            setError('Username must be at least 3 characters long');
+            setLoading(false);
+            return;
+        }
+
+        if (registerPassword.length < 6) {
+            setError('Password must be at least 6 characters long');
+            setLoading(false);
+            return;
+        }
+
+        if (registerPassword !== confirmPassword) {
+            setError('Passwords do not match');
+            setLoading(false);
+            return;
+        }
 
         try {
             const response = await fetch('/api/auth/register', {
@@ -108,7 +119,7 @@ function Login({ onLogin }) {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ key: generatedKey }),
+                body: JSON.stringify({ username: registerUsername, password: registerPassword }),
                 credentials: 'same-origin',
             });
 
@@ -132,64 +143,27 @@ function Login({ onLogin }) {
         }
     };
 
-    const handleGenerateKey = () => {
-        const newKey = generateAccessKey();
-        setGeneratedKey(newKey);
-        setCopied(false);
-        setRegisterSuccess(false);
-        setError('');
-    };
-
-    const handleCopyKey = () => {
-        // Use clipboard API if available, otherwise fallback to execCommand
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(generatedKey).then(() => {
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-            }).catch(() => {
-                // Fallback if clipboard API fails
-                fallbackCopyToClipboard(generatedKey);
-            });
-        } else {
-            fallbackCopyToClipboard(generatedKey);
-        }
-    };
-
-    const fallbackCopyToClipboard = (text) => {
-        const textArea = document.createElement('textarea');
-        textArea.value = text;
-        textArea.style.position = 'fixed';
-        textArea.style.left = '-9999px';
-        textArea.style.top = '-9999px';
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        try {
-            document.execCommand('copy');
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-        } catch (err) {
-            setError('Failed to copy to clipboard');
-        }
-        document.body.removeChild(textArea);
-    };
-
     const switchToRegister = () => {
         setIsRegisterView(true);
         setError('');
-        setAccessKey('');
-        handleGenerateKey();
+        setRegisterUsername('');
+        setRegisterPassword('');
+        setConfirmPassword('');
+        setRegisterSuccess(false);
     };
 
     const switchToLogin = () => {
         setIsRegisterView(false);
         setError('');
-        setGeneratedKey('');
+        setRegisterUsername('');
+        setRegisterPassword('');
+        setConfirmPassword('');
         setRegisterSuccess(false);
     };
 
-    const useGeneratedKeyToLogin = () => {
-        setAccessKey(generatedKey);
+    const useRegisteredAccountToLogin = () => {
+        setUsername(registerUsername);
+        setPassword('');
         switchToLogin();
     };
 
@@ -229,7 +203,7 @@ function Login({ onLogin }) {
                             mb: 1,
                         }}
                     >
-                        <KeyIcon sx={{ fontSize: 32, color: '#fff' }} />
+                        <PersonIcon sx={{ fontSize: 32, color: '#fff' }} />
                     </Box>
 
                     <Typography
@@ -240,7 +214,7 @@ function Login({ onLogin }) {
                             textAlign: 'center',
                         }}
                     >
-                        {isRegisterView ? 'Generate Key' : 'Sign In'}
+                        {isRegisterView ? 'Create Account' : 'Sign In'}
                     </Typography>
 
                     {error && (
@@ -272,18 +246,43 @@ function Login({ onLogin }) {
                         }}
                     >
                         <TextField
-                                label="Access Key"
-                                type="password"
-                                value={accessKey}
-                                onChange={(e) => setAccessKey(e.target.value)}
+                                label="Username"
+                                type="text"
+                                value={username}
+                                onChange={(e) => setUsername(e.target.value)}
                             fullWidth
                             autoFocus
-                                placeholder="Enter your login key"
+                                placeholder="Enter your username"
                             sx={{
                                 '& .MuiInputBase-input': {
                                     color: '#e0e7ff',
-                                        fontFamily: 'monospace',
-                                        letterSpacing: '1px',
+                                },
+                                '& .MuiInputLabel-root': {
+                                    color: '#94a3b8',
+                                },
+                                    '& .MuiOutlinedInput-root': {
+                                        '& fieldset': {
+                                            borderColor: '#475569',
+                                        },
+                                        '&:hover fieldset': {
+                                            borderColor: '#64748b',
+                                        },
+                                        '&.Mui-focused fieldset': {
+                                            borderColor: '#3b82f6',
+                                        },
+                                },
+                            }}
+                        />
+                        <TextField
+                                label="Password"
+                                type="password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                            fullWidth
+                                placeholder="Enter your password"
+                            sx={{
+                                '& .MuiInputBase-input': {
+                                    color: '#e0e7ff',
                                 },
                                 '& .MuiInputLabel-root': {
                                     color: '#94a3b8',
@@ -329,7 +328,7 @@ function Login({ onLogin }) {
                                     variant="body2"
                                     sx={{ color: '#64748b', mb: 1 }}
                                 >
-                                    Don't have an access key?
+                                    Don't have an account?
                                 </Typography>
                                 <Button
                                     variant="outlined"
@@ -345,7 +344,7 @@ function Login({ onLogin }) {
                                         },
                                     }}
                                 >
-                                    Register New Key
+                                    Create Account
                                 </Button>
                             </Box>
                         </Box>
@@ -361,96 +360,108 @@ function Login({ onLogin }) {
                         >
                             {!registerSuccess ? (
                                 <>
-                                    <Typography
-                                        variant="body2"
-                                        sx={{
-                                            color: '#94a3b8',
-                                            textAlign: 'center',
-                                            mb: 1,
-                                        }}
-                                    >
-                                        Your login has been generated. Copy and save it somewhere safe - you won't be able to access it again.
-                                    </Typography>
-
-                                    <TextField
-                                        label="Your Access Key"
-                                        value={generatedKey}
-                                        fullWidth
-                                        InputProps={{
-                                            readOnly: true,
-                                            endAdornment: (
-                                                <InputAdornment position="end">
-                                                    <Tooltip 
-                                                        title={copied ? "Copied!" : "Copy to clipboard"}
-                                                        TransitionComponent={Fade}
-                                                    >
-                                                        <IconButton
-                                                            onClick={handleCopyKey}
-                                                            edge="end"
-                                                            sx={{ color: copied ? '#22c55e' : '#94a3b8' }}
-                                                        >
-                                                            {copied ? <CheckIcon /> : <ContentCopyIcon />}
-                                                        </IconButton>
-                                                    </Tooltip>
-                                                </InputAdornment>
-                                            ),
-                                        }}
-                                        sx={{
-                                            '& .MuiInputBase-input': {
-                                                color: '#22c55e',
-                                                fontFamily: 'monospace',
-                                                fontSize: '1.1rem',
-                                                letterSpacing: '2px',
-                                                fontWeight: 600,
-                                            },
-                                            '& .MuiInputLabel-root': {
-                                                color: '#94a3b8',
-                                            },
-                                            '& .MuiOutlinedInput-root': {
-                                                backgroundColor: 'rgba(34, 197, 94, 0.05)',
-                                                '& fieldset': {
-                                                    borderColor: '#22c55e',
-                                                },
-                                                '&:hover fieldset': {
-                                                    borderColor: '#22c55e',
-                                                },
-                                                '&.Mui-focused fieldset': {
-                                                    borderColor: '#22c55e',
-                                                },
-                                            },
-                                        }}
-                                    />
-
                                     <Box
+                                        component="form"
+                                        onSubmit={handleRegister}
                                         sx={{
+                                            width: '100%',
                                             display: 'flex',
+                                            flexDirection: 'column',
                                             gap: 2,
-                                            mt: 1,
                                         }}
                                     >
-                                        <Button
-                                            variant="outlined"
-                                            onClick={handleGenerateKey}
+                                        <TextField
+                                            label="Username"
+                                            type="text"
+                                            value={registerUsername}
+                                            onChange={(e) => setRegisterUsername(e.target.value)}
+                                            fullWidth
+                                            autoFocus
+                                            placeholder="Choose a username"
                                             sx={{
-                                                flex: 1,
-                                                py: 1.5,
-                                                borderColor: '#475569',
-                                                color: '#94a3b8',
-                                                '&:hover': {
-                                                    borderColor: '#64748b',
-                                                    backgroundColor: 'rgba(100, 116, 139, 0.1)',
+                                                '& .MuiInputBase-input': {
+                                                    color: '#e0e7ff',
+                                                },
+                                                '& .MuiInputLabel-root': {
+                                                    color: '#94a3b8',
+                                                },
+                                                '& .MuiOutlinedInput-root': {
+                                                    '& fieldset': {
+                                                        borderColor: '#475569',
+                                                    },
+                                                    '&:hover fieldset': {
+                                                        borderColor: '#64748b',
+                                                    },
+                                                    '&.Mui-focused fieldset': {
+                                                        borderColor: '#3b82f6',
+                                                    },
                                                 },
                                             }}
-                                        >
-                                            Regenerate
-                                        </Button>
-                                        <Button
-                                            variant="contained"
-                                            onClick={handleRegister}
-                                            disabled={loading || !generatedKey}
+                                        />
+                                        <TextField
+                                            label="Password"
+                                            type="password"
+                                            value={registerPassword}
+                                            onChange={(e) => setRegisterPassword(e.target.value)}
+                                            fullWidth
+                                            placeholder="Choose a password (minimum of 6 characters)"
                                             sx={{
-                                                flex: 1,
+                                                '& .MuiInputBase-input': {
+                                                    color: '#e0e7ff',
+                                                },
+                                                '& .MuiInputLabel-root': {
+                                                    color: '#94a3b8',
+                                                },
+                                                '& .MuiOutlinedInput-root': {
+                                                    '& fieldset': {
+                                                        borderColor: '#475569',
+                                                    },
+                                                    '&:hover fieldset': {
+                                                        borderColor: '#64748b',
+                                                    },
+                                                    '&.Mui-focused fieldset': {
+                                                        borderColor: '#3b82f6',
+                                                    },
+                                                },
+                                            }}
+                                        />
+                                        <TextField
+                                            label="Confirm Password"
+                                            type="password"
+                                            value={confirmPassword}
+                                            onChange={(e) => setConfirmPassword(e.target.value)}
+                                            fullWidth
+                                            placeholder="Confirm your password"
+                                            sx={{
+                                                '& .MuiInputBase-input': {
+                                                    color: '#e0e7ff',
+                                                },
+                                                '& .MuiInputLabel-root': {
+                                                    color: '#94a3b8',
+                                                },
+                                                '& .MuiOutlinedInput-root': {
+                                                    '& fieldset': {
+                                                        borderColor: '#475569',
+                                                    },
+                                                    '&:hover fieldset': {
+                                                        borderColor: '#64748b',
+                                                    },
+                                                    '&.Mui-focused fieldset': {
+                                                        borderColor: '#3b82f6',
+                                                    },
+                                                },
+                                            }}
+                                        />
+                                        <Button
+                                            type="submit"
+                                            variant="contained"
+                                            fullWidth
+                                            disabled={loading}
+                                            startIcon={<PersonAddIcon />}
+                                            sx={{
+                                                mt: 1,
                                                 py: 1.5,
+                                                fontSize: '1rem',
                                                 backgroundColor: '#22c55e',
                                                 '&:hover': {
                                                     backgroundColor: '#16a34a',
@@ -464,26 +475,6 @@ function Login({ onLogin }) {
                                             {loading ? 'Creating...' : 'Create Account'}
                                         </Button>
                                     </Box>
-
-                                    <Box
-                                        sx={{
-                                            mt: 2,
-                                            p: 2,
-                                            backgroundColor: 'rgba(251, 191, 36, 0.1)',
-                                            borderRadius: '8px',
-                                            border: '1px solid rgba(251, 191, 36, 0.3)',
-                                        }}
-                                    >
-                                        <Typography
-                                            variant="body2"
-                                            sx={{
-                                                color: '#fbbf24',
-                                                textAlign: 'center',
-                                            }}
-                                        >
-                                            <strong>Important:</strong> It cannot be recovered if lost.
-                                        </Typography>
-                                    </Box>
                                 </>
                             ) : (
                                 <>
@@ -496,7 +487,7 @@ function Login({ onLogin }) {
                                             textAlign: 'center',
                                         }}
                                     >
-                                        <CheckIcon sx={{ fontSize: 48, color: '#22c55e', mb: 1 }} />
+                                        <PersonAddIcon sx={{ fontSize: 48, color: '#22c55e', mb: 1 }} />
                                         <Typography
                                             variant="h6"
                                             sx={{ color: '#22c55e', mb: 1 }}
@@ -507,56 +498,13 @@ function Login({ onLogin }) {
                                             variant="body2"
                                             sx={{ color: '#94a3b8' }}
                                         >
-                                            Your login is ready to use.
+                                            Your account is ready to use.
                                         </Typography>
                                     </Box>
 
-                                    <TextField
-                                        label="Your Access Key"
-                                        value={generatedKey}
-                                        fullWidth
-                                        InputProps={{
-                                            readOnly: true,
-                                            endAdornment: (
-                                                <InputAdornment position="end">
-                                                    <Tooltip 
-                                                        title={copied ? "Copied!" : "Copy to clipboard"}
-                                                        TransitionComponent={Fade}
-                                                    >
-                                                        <IconButton
-                                                            onClick={handleCopyKey}
-                                                            edge="end"
-                                                            sx={{ color: copied ? '#22c55e' : '#94a3b8' }}
-                                                        >
-                                                            {copied ? <CheckIcon /> : <ContentCopyIcon />}
-                                                        </IconButton>
-                                                    </Tooltip>
-                                                </InputAdornment>
-                                            ),
-                                        }}
-                                        sx={{
-                                            '& .MuiInputBase-input': {
-                                                color: '#22c55e',
-                                                fontFamily: 'monospace',
-                                                fontSize: '1.1rem',
-                                                letterSpacing: '2px',
-                                                fontWeight: 600,
-                                            },
-                                            '& .MuiInputLabel-root': {
-                                                color: '#94a3b8',
-                                            },
-                                            '& .MuiOutlinedInput-root': {
-                                                backgroundColor: 'rgba(34, 197, 94, 0.05)',
-                                                '& fieldset': {
-                                                    borderColor: '#22c55e',
-                                                },
-                                            },
-                                        }}
-                                    />
-
                                     <Button
                                         variant="contained"
-                                        onClick={useGeneratedKeyToLogin}
+                                        onClick={useRegisteredAccountToLogin}
                                         startIcon={<LoginIcon />}
                                         sx={{
                                             mt: 1,
