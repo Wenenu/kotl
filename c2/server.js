@@ -45,10 +45,10 @@ const NOWPAYMENTS_IPN_SECRET = process.env.NOWPAYMENTS_IPN_SECRET || '';
 
 // Bitpapa API configuration (https://bitpapa.com)
 // API Documentation: https://apidocs.bitpapa.com/docs/backend-apis-english/5i1qrv7ssq81i-bitpapa-pay-integration
+// Base URL: https://bitpapa.com/api/v1/pay/
 const BITPAPA_API_TOKEN = process.env.BITPAPA_API_TOKEN || '';
-// BitPapa Pay API base URL - check documentation for the correct URL
-// Common possibilities: https://api.bitpapa.com, https://bitpapa.com/api, https://pay.bitpapa.com/api
-const BITPAPA_API_URL = process.env.BITPAPA_API_URL || 'https://api.bitpapa.com';
+// BitPapa Pay API base URL - according to official documentation
+const BITPAPA_API_URL = process.env.BITPAPA_API_URL || 'https://bitpapa.com/api/v1/pay';
 
 // Manual payment wallet addresses (for direct crypto payments)
 const WALLET_ADDRESSES = {
@@ -966,29 +966,9 @@ app.post('/api/payment/create-invoice', authenticateToken, async (req, res) => {
                 // Encode subscription info in order_id: sub_username_planId_days_timestamp
                 const orderId = `sub_${username}_${planId}_${plan.days}_${Date.now()}`;
                 
-                // Try different possible BitPapa API base URLs and endpoints
-                // Based on documentation: https://apidocs.bitpapa.com/docs/backend-apis-english/5i1qrv7ssq81i-bitpapa-pay-integration
-                const possibleBaseUrls = [
-                    BITPAPA_API_URL,
-                    'https://api.bitpapa.com',
-                    'https://bitpapa.com/api',
-                    'https://pay.bitpapa.com/api',
-                    'https://api.bitpapa.com/v1',
-                    'https://bitpapa.com/api/v1'
-                ];
-                
-                const possibleEndpoints = [
-                    '/api/v1/invoices',
-                    '/v1/invoices',
-                    '/invoices',
-                    '/api/invoices',
-                    '/payments/invoices',
-                    '/api/v1/payments/invoices'
-                ];
-                
-                let invoice = null;
-                let lastError = null;
-                
+                // Create invoice via BitPapa Pay API
+                // Documentation: https://apidocs.bitpapa.com/docs/backend-apis-english/5i1qrv7ssq81i-bitpapa-pay-integration
+                // Endpoint: POST https://bitpapa.com/api/v1/pay/invoice
                 const invoiceData = {
                     amount: plan.price,
                     currency: plan.currency.toUpperCase(),
@@ -999,26 +979,32 @@ app.post('/api/payment/create-invoice', authenticateToken, async (req, res) => {
                     cancel_url: returnUrl
                 };
                 
-                // Try each combination of base URL and endpoint
-                for (const baseUrl of possibleBaseUrls) {
-                    if (invoice) break;
-                    
-                    for (const endpoint of possibleEndpoints) {
-                        try {
-                            console.log(`[Bitpapa] Trying: ${baseUrl}${endpoint}`);
-                            invoice = await bitpapaRequest(endpoint, 'POST', invoiceData, baseUrl);
-                            console.log(`[Bitpapa] Success with: ${baseUrl}${endpoint}`);
-                            break;
-                        } catch (err) {
-                            console.log(`[Bitpapa] Failed ${baseUrl}${endpoint}: ${err.message}`);
-                            lastError = err;
-                            continue;
-                        }
+                // Try the official endpoint first, then fallback to alternatives if needed
+                let invoice = null;
+                let lastError = null;
+                
+                const endpointsToTry = [
+                    '/invoice',  // Official endpoint: /api/v1/pay/invoice (base URL already includes /api/v1/pay)
+                    '/invoices',
+                    '/api/v1/pay/invoice',
+                    '/v1/pay/invoice'
+                ];
+                
+                for (const endpoint of endpointsToTry) {
+                    try {
+                        console.log(`[Bitpapa] Trying endpoint: ${endpoint}`);
+                        invoice = await bitpapaRequest(endpoint, 'POST', invoiceData);
+                        console.log(`[Bitpapa] Success with endpoint: ${endpoint}`);
+                        break;
+                    } catch (err) {
+                        console.log(`[Bitpapa] Failed endpoint ${endpoint}: ${err.message}`);
+                        lastError = err;
+                        continue;
                     }
                 }
                 
                 if (!invoice) {
-                    throw lastError || new Error('All BitPapa API endpoint combinations failed. Check documentation: https://apidocs.bitpapa.com/');
+                    throw lastError || new Error('Failed to create BitPapa invoice. Check documentation: https://apidocs.bitpapa.com/');
                 }
                 
                 console.log(`[Bitpapa] Invoice created for user ${username.substring(0, 8)}...: ${plan.name} plan, Invoice ID: ${invoice.id || invoice.invoice_id}`);
@@ -1107,7 +1093,28 @@ app.get('/api/payment/check/:invoiceId', authenticateToken, async (req, res) => 
         // Try Bitpapa
         if ((!provider || provider === 'bitpapa') && BITPAPA_API_TOKEN) {
             try {
-                const invoice = await bitpapaRequest(`/invoices/${invoiceId}`, 'GET');
+                // Try different possible endpoints for checking invoice status
+                let invoice = null;
+                const statusEndpoints = [
+                    `/invoice/${invoiceId}`,      // Official endpoint format
+                    `/invoices/${invoiceId}`,
+                    `/api/v1/pay/invoice/${invoiceId}`,
+                    `/v1/pay/invoice/${invoiceId}`
+                ];
+                
+                for (const endpoint of statusEndpoints) {
+                    try {
+                        invoice = await bitpapaRequest(endpoint, 'GET');
+                        break;
+                    } catch (err) {
+                        continue;
+                    }
+                }
+                
+                if (!invoice) {
+                    throw new Error('Invoice not found');
+                }
+                
                 return res.json({
                     status: invoice.status,
                     paid: invoice.status === 'paid' || invoice.status === 'completed',
@@ -1263,39 +1270,34 @@ app.get('/api/payment/test-bitpapa', async (req, res) => {
         console.log(`[BitPapa Test] Testing connection to: ${BITPAPA_API_URL}`);
         console.log(`[BitPapa Test] Token configured: ${BITPAPA_API_TOKEN.substring(0, 8)}...`);
 
-        // Try different possible base URLs and endpoints to test connectivity
-        // Based on documentation: https://apidocs.bitpapa.com/docs/backend-apis-english/5i1qrv7ssq81i-bitpapa-pay-integration
-        const possibleBaseUrls = [
-            BITPAPA_API_URL,
-            'https://api.bitpapa.com',
-            'https://bitpapa.com/api',
-            'https://pay.bitpapa.com/api',
-            'https://api.bitpapa.com/v1',
-            'https://bitpapa.com/api/v1'
-        ];
-        
-        const testEndpoints = ['/api/v1/me', '/v1/me', '/me', '/api/me', '/user', '/api/v1/user', '/v1/user'];
-        
+        // Test BitPapa Pay API connectivity
+        // Documentation: https://apidocs.bitpapa.com/docs/backend-apis-english/5i1qrv7ssq81i-bitpapa-pay-integration
+        // Base URL: https://bitpapa.com/api/v1/pay/
         let testResponse = null;
         let lastError = null;
+        
+        // Try common test endpoints for BitPapa Pay API
+        const testEndpoints = [
+            '/status',      // Check API status
+            '/me',          // Get merchant info
+            '/merchant',    // Merchant endpoint
+            '/balance',      // Check balance
+            '/api/v1/pay/status',  // Full path variant
+            '/api/v1/pay/me'
+        ];
 
-        // Try each combination of base URL and endpoint
-        for (const baseUrl of possibleBaseUrls) {
-            if (testResponse) break;
-            
-            for (const endpoint of testEndpoints) {
-                try {
-                    console.log(`[BitPapa Test] Trying: ${baseUrl}${endpoint}`);
-                    testResponse = await bitpapaRequest(endpoint, 'GET', null, baseUrl);
-                    console.log(`[BitPapa Test] Success with: ${baseUrl}${endpoint}`);
-                    break;
-                } catch (err) {
-                    console.log(`[BitPapa Test] Failed ${baseUrl}${endpoint}: ${err.message}`);
-                    if (!lastError || (err.code && !lastError.code)) {
-                        lastError = err;
-                    }
-                    continue;
+        for (const endpoint of testEndpoints) {
+            try {
+                console.log(`[BitPapa Test] Trying endpoint: ${endpoint}`);
+                testResponse = await bitpapaRequest(endpoint, 'GET');
+                console.log(`[BitPapa Test] Success with endpoint: ${endpoint}`);
+                break;
+            } catch (err) {
+                console.log(`[BitPapa Test] Failed endpoint ${endpoint}: ${err.message}`);
+                if (!lastError || (err.code && !lastError.code)) {
+                    lastError = err;
                 }
+                continue;
             }
         }
 
