@@ -832,7 +832,7 @@ async function nowPaymentsRequest(endpoint, method = 'GET', body = null) {
 app.post('/api/payment/create-invoice', authenticateToken, async (req, res) => {
     try {
         const username = req.user.username;
-        const { planId } = req.body;
+        const { planId, provider } = req.body; // provider: 'nowpayments', 'bitpapa', or undefined for auto
         
         if (!planId || !SUBSCRIPTION_PLANS[planId]) {
             return res.status(400).json({ message: 'Invalid plan selected' });
@@ -842,9 +842,8 @@ app.post('/api/payment/create-invoice', authenticateToken, async (req, res) => {
         const webhookUrl = `${process.env.WEBPANEL_URL || `${req.protocol}://${req.get('host')}`}/api/payment/webhook`;
         const returnUrl = `${process.env.WEBPANEL_URL || `${req.protocol}://${req.get('host')}`}/purchase`;
         
-        // Priority: NOWPayments > Bitpapa > Manual
-        // If NOWPayments is configured, use it
-        if (NOWPAYMENTS_API_KEY) {
+        // If provider is specified, use it; otherwise use priority: NOWPayments > Bitpapa > Manual
+        if (provider === 'nowpayments' && NOWPAYMENTS_API_KEY) {
             // Create invoice via NOWPayments API
             // Encode subscription info in order_id: sub_username_planId_days_timestamp
             // NOWPayments doesn't support metadata field, so we encode it in order_id
@@ -875,8 +874,8 @@ app.post('/api/payment/create-invoice', authenticateToken, async (req, res) => {
             });
         }
         
-        // If Bitpapa is configured, use it
-        if (BITPAPA_API_TOKEN) {
+        // If provider is specified as bitpapa, or no provider specified and Bitpapa is configured
+        if ((provider === 'bitpapa' || (!provider && !NOWPAYMENTS_API_KEY)) && BITPAPA_API_TOKEN) {
             // Create invoice via Bitpapa API
             // Encode subscription info in order_id: sub_username_planId_days_timestamp
             const orderId = `sub_${username}_${planId}_${plan.days}_${Date.now()}`;
