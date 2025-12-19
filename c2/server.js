@@ -44,8 +44,11 @@ const NOWPAYMENTS_API_URL = 'https://api.nowpayments.io/v1';
 const NOWPAYMENTS_IPN_SECRET = process.env.NOWPAYMENTS_IPN_SECRET || '';
 
 // Bitpapa API configuration (https://bitpapa.com)
+// NOTE: BitPapa is primarily a P2P crypto exchange. They may not have a public payment API.
+// If BitPapa doesn't have an API, consider using NOWPayments or manual payments instead.
 const BITPAPA_API_TOKEN = process.env.BITPAPA_API_TOKEN || '';
-const BITPAPA_API_URL = 'https://api.bitpapa.com';
+// Try different possible API URLs - BitPapa's actual API structure may vary
+const BITPAPA_API_URL = process.env.BITPAPA_API_URL || 'https://api.bitpapa.com';
 
 // Manual payment wallet addresses (for direct crypto payments)
 const WALLET_ADDRESSES = {
@@ -870,7 +873,21 @@ async function bitpapaRequest(endpoint, method = 'GET', body = null) {
         return data;
     } catch (fetchError) {
         console.error('[Bitpapa] Fetch error:', fetchError.message);
-        throw new Error(`Failed to connect to Bitpapa API: ${fetchError.message}`);
+        console.error('[Bitpapa] Error type:', fetchError.constructor.name);
+        console.error('[Bitpapa] Error code:', fetchError.code);
+        console.error('[Bitpapa] Attempted URL:', url);
+        
+        // Provide more specific error messages
+        let errorMessage = `Failed to connect to Bitpapa API: ${fetchError.message}`;
+        if (fetchError.code === 'ENOTFOUND' || fetchError.code === 'EAI_AGAIN') {
+            errorMessage += ' (DNS resolution failed - API URL might be incorrect or domain does not exist)';
+        } else if (fetchError.code === 'ECONNREFUSED') {
+            errorMessage += ' (Connection refused - API server might be down or URL is wrong)';
+        } else if (fetchError.code === 'ETIMEDOUT') {
+            errorMessage += ' (Connection timeout - API server might be unreachable)';
+        }
+        
+        throw new Error(errorMessage);
     }
 }
 
@@ -1213,32 +1230,60 @@ app.get('/api/payment/plans', (req, res) => {
     });
 });
 
-// Test BitPapa API connection (admin only)
-app.get('/api/payment/test-bitpapa', authenticateToken, async (req, res) => {
+// Test BitPapa API connection (no auth required for testing)
+app.get('/api/payment/test-bitpapa', async (req, res) => {
     try {
         if (!BITPAPA_API_TOKEN) {
             return res.json({
                 success: false,
-                message: 'BitPapa API token not configured',
-                configured: false
+                message: 'BitPapa API token not configured. Set BITPAPA_API_TOKEN in .env file.',
+                configured: false,
+                apiUrl: BITPAPA_API_URL
             });
         }
 
-        // Try a simple API call to test connectivity
-        const testResponse = await bitpapaRequest('/me', 'GET');
-        res.json({
-            success: true,
-            message: 'BitPapa API connection successful',
-            configured: true,
-            response: testResponse
-        });
+        console.log(`[BitPapa Test] Testing connection to: ${BITPAPA_API_URL}`);
+        console.log(`[BitPapa Test] Token configured: ${BITPAPA_API_TOKEN.substring(0, 8)}...`);
+
+        // Try different possible endpoints to test connectivity
+        let testResponse = null;
+        let lastError = null;
+        const testEndpoints = ['/api/v1/me', '/v1/me', '/me', '/api/me', '/user'];
+
+        for (const endpoint of testEndpoints) {
+            try {
+                console.log(`[BitPapa Test] Trying endpoint: ${endpoint}`);
+                testResponse = await bitpapaRequest(endpoint, 'GET');
+                console.log(`[BitPapa Test] Success with endpoint: ${endpoint}`);
+                break;
+            } catch (err) {
+                console.log(`[BitPapa Test] Failed endpoint ${endpoint}: ${err.message}`);
+                lastError = err;
+                continue;
+            }
+        }
+
+        if (testResponse) {
+            res.json({
+                success: true,
+                message: 'BitPapa API connection successful',
+                configured: true,
+                apiUrl: BITPAPA_API_URL,
+                response: testResponse
+            });
+        } else {
+            throw lastError || new Error('All test endpoints failed');
+        }
     } catch (error) {
         console.error('[BitPapa Test] Error:', error.message);
         res.json({
             success: false,
             message: `BitPapa API test failed: ${error.message}`,
             configured: !!BITPAPA_API_TOKEN,
-            error: error.message
+            apiUrl: BITPAPA_API_URL,
+            tokenConfigured: !!BITPAPA_API_TOKEN,
+            error: error.message,
+            suggestion: 'Verify that BitPapa API exists and the API URL is correct. BitPapa might not have a public API, or the endpoint structure may be different.'
         });
     }
 });
