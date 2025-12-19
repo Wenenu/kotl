@@ -841,10 +841,11 @@ app.post('/api/payment/create-invoice', authenticateToken, async (req, res) => {
         // If NOWPayments is configured, use it
         if (NOWPAYMENTS_API_KEY) {
             // Create invoice via NOWPayments API
-            // Note: pay_currency is omitted to let user choose any cryptocurrency
+            // Using BTC as default - users can still choose other currencies on the payment page
             const invoice = await nowPaymentsRequest('/payment', 'POST', {
                 price_amount: plan.price,
                 price_currency: plan.currency.toLowerCase(),
+                pay_currency: 'ltc', // Default currency, user can change on payment page
                 order_id: `sub_${username}_${Date.now()}`,
                 order_description: `${plan.name} Subscription`,
                 ipn_callback_url: webhookUrl,
