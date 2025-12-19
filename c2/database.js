@@ -220,6 +220,25 @@ const initDatabase = () => {
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `);
+
+    // Pending payments table (for manual crypto payments)
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS pending_payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            plan_id TEXT NOT NULL,
+            plan_name TEXT NOT NULL,
+            days INTEGER NOT NULL,
+            amount REAL NOT NULL,
+            currency TEXT NOT NULL,
+            crypto_currency TEXT NOT NULL,
+            transaction_hash TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            verified_at DATETIME,
+            verified_by TEXT
+        )
+    `);
     
     // Migrate existing database: add session_id, updated_at, user, and notes columns if they don't exist
     // Check if columns exist using PRAGMA table_info (safer than SELECT)
@@ -888,10 +907,67 @@ try {
     process.exit(1);
 }
 
+// Pending payments operations
+const pendingPaymentsDb = {
+    create: (paymentData) => {
+        const { username, planId, planName, days, amount, currency, cryptoCurrency, transactionHash } = paymentData;
+        const result = db.prepare(`
+            INSERT INTO pending_payments (username, plan_id, plan_name, days, amount, currency, crypto_currency, transaction_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(username, planId, planName, days, amount, currency, cryptoCurrency, transactionHash);
+        return result.lastInsertRowid;
+    },
+    
+    getAll: (status = null) => {
+        if (status) {
+            return db.prepare(`
+                SELECT * FROM pending_payments
+                WHERE status = ?
+                ORDER BY created_at DESC
+            `).all(status);
+        }
+        return db.prepare(`
+            SELECT * FROM pending_payments
+            ORDER BY created_at DESC
+        `).all();
+    },
+    
+    getByUsername: (username) => {
+        return db.prepare(`
+            SELECT * FROM pending_payments
+            WHERE username = ?
+            ORDER BY created_at DESC
+        `).all(username);
+    },
+    
+    getById: (id) => {
+        return db.prepare('SELECT * FROM pending_payments WHERE id = ?').get(id);
+    },
+    
+    verify: (id, verifiedBy) => {
+        const result = db.prepare(`
+            UPDATE pending_payments
+            SET status = 'verified', verified_at = CURRENT_TIMESTAMP, verified_by = ?
+            WHERE id = ?
+        `).run(verifiedBy, id);
+        return result.changes > 0;
+    },
+    
+    reject: (id, verifiedBy) => {
+        const result = db.prepare(`
+            UPDATE pending_payments
+            SET status = 'rejected', verified_at = CURRENT_TIMESTAMP, verified_by = ?
+            WHERE id = ?
+        `).run(verifiedBy, id);
+        return result.changes > 0;
+    }
+};
+
 module.exports = {
     db,
     userDb,
     loginAttemptsDb,
-    logsDb
+    logsDb,
+    pendingPaymentsDb
 };
 
