@@ -23,7 +23,7 @@ import {
     FormControl,
     InputLabel
 } from '@mui/material';
-import { Download as DownloadIcon, Build as BuildIcon, ExpandMore as ExpandMoreIcon, Image as ImageIcon, Folder as FolderIcon, Switch as SwitchIcon, ShoppingCart as ShoppingCartIcon, Lock as LockIcon } from '@mui/icons-material';
+import { Download as DownloadIcon, Build as BuildIcon, ExpandMore as ExpandMoreIcon, Image as ImageIcon, Folder as FolderIcon, Switch as SwitchIcon, ShoppingCart as ShoppingCartIcon } from '@mui/icons-material';
 
 function PayloadBuilderPage() {
     const [selectedFeatures, setSelectedFeatures] = useState({
@@ -371,7 +371,9 @@ function PayloadBuilderPage() {
         return false;
     };
 
-    // Show subscription required message if not subscribed
+    const hasActiveSubscription = isSubscriptionActive();
+
+    // Show loading state
     if (loadingSubscription) {
         return (
             <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
@@ -380,33 +382,29 @@ function PayloadBuilderPage() {
         );
     }
 
-    if (!isSubscriptionActive()) {
-        return (
-            <Box sx={{ p: 3 }}>
-                <Paper sx={{ p: 4, textAlign: 'center', maxWidth: 600, mx: 'auto', mt: 4 }}>
-                    <LockIcon sx={{ fontSize: 64, color: 'error.main', mb: 2 }} />
-                    <Typography variant="h4" gutterBottom>
-                        Subscription Required
-                    </Typography>
-                    <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-                        You need an active subscription to use the Payload Builder. Subscribe now to create custom payloads and start collecting data.
-                    </Typography>
-                    <Button
-                        variant="contained"
-                        size="large"
-                        startIcon={<ShoppingCartIcon />}
-                        onClick={() => navigate('/purchase')}
-                        sx={{ mt: 2 }}
-                    >
-                        Purchase Subscription
-                    </Button>
-                </Paper>
-            </Box>
-        );
-    }
-
     return (
         <Box sx={{ p: 3 }}>
+            {!hasActiveSubscription && (
+                <Alert 
+                    severity="warning" 
+                    sx={{ mb: 3 }}
+                    action={
+                        <Button
+                            color="inherit"
+                            size="small"
+                            startIcon={<ShoppingCartIcon />}
+                            onClick={() => navigate('/purchase')}
+                        >
+                            Purchase Subscription
+                        </Button>
+                    }
+                >
+                    <Typography variant="body2" fontWeight="medium">
+                        No active subscription. You can view the builder but cannot generate payloads without a subscription.
+                    </Typography>
+                </Alert>
+            )}
+
             <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <BuildIcon />
                 Payload Builder
@@ -442,14 +440,14 @@ function PayloadBuilderPage() {
                                         <Button
                                             size="small"
                                             onClick={() => handleSelectAll(category, true)}
-                                            disabled={getSelectedCount(category) === features.filter(f => f.category === category).length}
+                                            disabled={!hasActiveSubscription || getSelectedCount(category) === features.filter(f => f.category === category).length}
                                         >
                                             Select All
                                         </Button>
                                         <Button
                                             size="small"
                                             onClick={() => handleSelectAll(category, false)}
-                                            disabled={getSelectedCount(category) === 0}
+                                            disabled={!hasActiveSubscription || getSelectedCount(category) === 0}
                                         >
                                             Deselect All
                                         </Button>
@@ -470,6 +468,7 @@ function PayloadBuilderPage() {
                                                     checked={selectedFeatures[feature.key]}
                                                     onChange={handleFeatureChange(feature.key)}
                                                     color="primary"
+                                                    disabled={!hasActiveSubscription}
                                                 />
                                             }
                                             label={
@@ -516,6 +515,7 @@ function PayloadBuilderPage() {
                             size="small"
                             sx={{ minWidth: 280 }}
                             helperText=".exe will be added automatically if not specified"
+                            disabled={!hasActiveSubscription}
                             InputProps={{
                                 endAdornment: <Typography variant="caption" color="text.secondary">.exe</Typography>
                             }}
@@ -524,7 +524,7 @@ function PayloadBuilderPage() {
                             variant="contained"
                             startIcon={<DownloadIcon />}
                             onClick={handleGeneratePayload}
-                            disabled={isGenerating || getTotalSelected() === 0}
+                            disabled={!hasActiveSubscription || isGenerating || getTotalSelected() === 0}
                             size="large"
                             sx={{ minWidth: 200 }}
                         >
@@ -562,6 +562,7 @@ function PayloadBuilderPage() {
                                                     prev.map(item => ({ ...item, enabled: true }))
                                                 );
                                             }}
+                                            disabled={!hasActiveSubscription}
                                         >
                                             Enable All
                                         </Button>
@@ -572,6 +573,7 @@ function PayloadBuilderPage() {
                                                     prev.map(item => ({ ...item, enabled: false }))
                                                 );
                                             }}
+                                            disabled={!hasActiveSubscription}
                                         >
                                             Disable All
                                         </Button>
@@ -602,6 +604,7 @@ function PayloadBuilderPage() {
                                                             setImportantFilesConfig(newConfig);
                                                         }}
                                                         color="primary"
+                                                        disabled={!hasActiveSubscription}
                                                     />
                                                 }
                                                 label={
@@ -619,7 +622,7 @@ function PayloadBuilderPage() {
                                                     newConfig[index].path = e.target.value;
                                                     setImportantFilesConfig(newConfig);
                                                 }}
-                                                disabled={!file.enabled}
+                                                disabled={!hasActiveSubscription || !file.enabled}
                                                 placeholder="Enter path..."
                                                 helperText={file.enabled ? "Path to scan (supports %APPDATA%, %USERPROFILE%, etc.)" : ""}
                                             />
@@ -649,6 +652,7 @@ function PayloadBuilderPage() {
                                     component="label"
                                     size="small"
                                     sx={{ mb: 2 }}
+                                    disabled={!hasActiveSubscription}
                                 >
                                     {iconFile ? iconFile.name : 'Select Icon File'}
                                     <input
@@ -656,6 +660,7 @@ function PayloadBuilderPage() {
                                         hidden
                                         accept=".ico"
                                         onChange={handleIconChange}
+                                        disabled={!hasActiveSubscription}
                                     />
                                 </Button>
                                 {iconFile && (
@@ -673,6 +678,7 @@ function PayloadBuilderPage() {
                                     onChange={handleMetadataChange('description')}
                                     size="small"
                                     helperText="File description shown in properties"
+                                    disabled={!hasActiveSubscription}
                                 />
                             </Grid>
                             
@@ -684,6 +690,7 @@ function PayloadBuilderPage() {
                                     onChange={handleMetadataChange('fileDescription')}
                                     size="small"
                                     helperText="Detailed file description"
+                                    disabled={!hasActiveSubscription}
                                 />
                             </Grid>
                             
@@ -696,6 +703,7 @@ function PayloadBuilderPage() {
                                     size="small"
                                     placeholder="1.0.0.0"
                                     helperText="Format: major.minor.build.revision"
+                                    disabled={!hasActiveSubscription}
                                 />
                             </Grid>
                             
@@ -707,6 +715,7 @@ function PayloadBuilderPage() {
                                     onChange={handleMetadataChange('productName')}
                                     size="small"
                                     helperText="Product name shown in properties"
+                                    disabled={!hasActiveSubscription}
                                 />
                             </Grid>
                             
@@ -719,6 +728,7 @@ function PayloadBuilderPage() {
                                     size="small"
                                     placeholder="1.0.0.0"
                                     helperText="Product version number"
+                                    disabled={!hasActiveSubscription}
                                 />
                             </Grid>
                             
@@ -731,6 +741,7 @@ function PayloadBuilderPage() {
                                     size="small"
                                     placeholder="Copyright © 2025"
                                     helperText="Copyright information"
+                                    disabled={!hasActiveSubscription}
                                 />
                             </Grid>
                             
@@ -741,6 +752,7 @@ function PayloadBuilderPage() {
                                         value={fileMetadata.requestedExecutionLevel}
                                         label="Execution Level"
                                         onChange={(e) => setFileMetadata(prev => ({ ...prev, requestedExecutionLevel: e.target.value }))}
+                                        disabled={!hasActiveSubscription}
                                     >
                                         <MenuItem value="">Default (asInvoker)</MenuItem>
                                         <MenuItem value="asInvoker">asInvoker - Same privileges as parent</MenuItem>

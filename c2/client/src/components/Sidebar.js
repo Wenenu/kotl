@@ -12,7 +12,6 @@ import {
 } from '@mui/material';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import BarChartIcon from '@mui/icons-material/BarChart';
-import PersonIcon from '@mui/icons-material/Person';
 import SettingsIcon from '@mui/icons-material/Settings';
 import BuildIcon from '@mui/icons-material/Build';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
@@ -24,7 +23,6 @@ const menuItems = [
     { text: 'Global Statistics', path: '/statistics', icon: <BarChartIcon /> },
     { text: 'Builder', path: '/builder', icon: <BuildIcon /> },
     { text: 'Purchase', path: '/purchase', icon: <ShoppingCartIcon /> },
-    { text: 'User', path: '/timeline', icon: <PersonIcon /> },
     { text: 'Settings', path: '/settings', icon: <SettingsIcon /> },
 ];
 
