@@ -441,7 +441,7 @@ function PayloadBuilderPage() {
                         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                 <FolderIcon />
-                                <Typography variant="h6">Important Files Configuration</Typography>
+                                <Typography variant="h6">Important Files Config</Typography>
                                 <Chip 
                                     label={`${importantFilesConfig.filter(f => f.enabled).length}/${importantFilesConfig.length} enabled`}
                                     size="small"
