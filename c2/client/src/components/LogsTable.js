@@ -18,6 +18,7 @@ import {
     CircularProgress,
     Checkbox,
     Chip,
+    useTheme,
 } from '@mui/material';
 import { visuallyHidden } from '@mui/utils';
 
@@ -220,6 +221,7 @@ function LogsTable() {
     const [selected, setSelected] = useState([]);
 
     const navigate = useNavigate();
+    const theme = useTheme();
 
     const fetchLogs = useCallback(async () => {
         try {
@@ -555,9 +557,9 @@ function LogsTable() {
     );
 
     return (
-        <Paper sx={{ width: '100%', mb: 2, backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '12px', overflow: 'hidden' }}>
+        <Paper sx={{ width: '100%', mb: 2, backgroundColor: theme.palette.background.paper, border: `1px solid ${theme.palette.divider}`, borderRadius: '12px', overflow: 'hidden' }}>
             <Toolbar>
-                <Typography sx={{ flex: '1 1 100%', variant: 'h6', component: 'div', color: '#3b82f6', fontWeight: 600 }}>
+                <Typography sx={{ flex: '1 1 100%', variant: 'h6', component: 'div', color: theme.palette.primary.main, fontWeight: 600 }}>
                     Client Logs
                 </Typography>
                 <TextField
@@ -596,8 +598,8 @@ function LogsTable() {
                             boxShadow: '0 4px 12px rgba(59, 130, 246, 0.4)',
                         },
                         '&:disabled': {
-                            backgroundColor: '#1e293b',
-                            color: '#475569',
+                            backgroundColor: theme.palette.background.paper,
+                            color: theme.palette.text.disabled || theme.palette.text.secondary,
                             boxShadow: 'none',
                         }
                     }}
@@ -623,8 +625,8 @@ function LogsTable() {
                             boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)',
                         },
                         '&:disabled': {
-                            backgroundColor: '#1e293b',
-                            color: '#475569',
+                            backgroundColor: theme.palette.background.paper,
+                            color: theme.palette.text.disabled || theme.palette.text.secondary,
                             boxShadow: 'none',
                         }
                     }}
@@ -637,11 +639,11 @@ function LogsTable() {
                     <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
                         {loading ? (
                             <>
-                                <CircularProgress sx={{ color: '#3b82f6' }} />
-                                <Typography sx={{ ml: 2, color: '#94a3b8' }}>Waiting for client logs...</Typography>
+                                <CircularProgress sx={{ color: theme.palette.primary.main }} />
+                                <Typography sx={{ ml: 2, color: theme.palette.text.secondary }}>Waiting for client logs...</Typography>
                             </>
                         ) : (
-                            <Typography sx={{ color: '#94a3b8' }}>No logs yet</Typography>
+                            <Typography sx={{ color: theme.palette.text.secondary }}>No logs yet</Typography>
                         )}
                     </Box>
                 ) : (
@@ -658,12 +660,12 @@ function LogsTable() {
                                             'aria-label': 'select all logs',
                                         }}
                                         sx={{
-                                            color: '#3b82f6',
+                                            color: theme.palette.primary.main,
                                             '&.Mui-checked': {
-                                                color: '#3b82f6',
+                                                color: theme.palette.primary.main,
                                             },
                                             '&.MuiCheckbox-indeterminate': {
-                                                color: '#3b82f6',
+                                                color: theme.palette.primary.main,
                                             },
                                         }}
                                     />
@@ -674,22 +676,22 @@ function LogsTable() {
                                         align={headCell.numeric ? 'right' : 'left'}
                                         padding={headCell.disablePadding ? 'none' : 'normal'}
                                         sortDirection={sortKey === headCell.id ? sortDirection : false}
-                                        sx={{ color: '#3b82f6', fontWeight: 600 }}
+                                        sx={{ color: theme.palette.primary.main, fontWeight: 600 }}
                                     >
                                         <TableSortLabel
                                             active={sortKey === headCell.id}
                                             direction={sortKey === headCell.id ? sortDirection : 'asc'}
                                             onClick={() => handleSort(headCell.id)}
                                             sx={{
-                                                color: '#3b82f6',
+                                                color: theme.palette.primary.main,
                                                 '&:hover': {
-                                                    color: '#60a5fa',
+                                                    color: theme.palette.primary.light,
                                                 },
                                                 '&.Mui-active': {
-                                                    color: '#3b82f6',
+                                                    color: theme.palette.primary.main,
                                                 },
                                                 '& .MuiTableSortLabel-icon': {
-                                                    color: '#3b82f6 !important',
+                                                    color: `${theme.palette.primary.main} !important`,
                                                 },
                                             }}
                                         >
@@ -723,13 +725,14 @@ function LogsTable() {
                                         key={log.id}
                                         selected={isItemSelected}
                                         sx={{
+                                            backgroundColor: theme.palette.background.paper,
                                             '&:hover': {
-                                                backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                                                backgroundColor: theme.palette.action.hover || 'rgba(255, 255, 255, 0.03)',
                                             },
                                             '&.Mui-selected': {
-                                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                                backgroundColor: theme.palette.action.selected || `${theme.palette.primary.main}1A`,
                                                 '&:hover': {
-                                                    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                                                    backgroundColor: theme.palette.action.selected || `${theme.palette.primary.main}26`,
                                                 },
                                             }
                                         }}
@@ -743,19 +746,19 @@ function LogsTable() {
                                                 }}
                                                 onClick={(e) => e.stopPropagation()}
                                                 sx={{
-                                                    color: '#3b82f6',
+                                                    color: theme.palette.primary.main,
                                                     '&.Mui-checked': {
-                                                        color: '#3b82f6',
+                                                        color: theme.palette.primary.main,
                                                     },
                                                 }}
                                             />
                                         </TableCell>
-                                        <TableCell component="th" id={labelId} scope="row" sx={{ color: '#e2e8f0' }}>
+                                        <TableCell component="th" id={labelId} scope="row" sx={{ color: theme.palette.text.primary }}>
                                             {log.ip}
                                         </TableCell>
-                                        <TableCell sx={{ color: '#94a3b8' }}>{log.country}</TableCell>
-                                        <TableCell sx={{ color: '#94a3b8' }}>{new Date(log.date).toLocaleString()}</TableCell>
-                                        <TableCell sx={{ color: '#94a3b8' }}>
+                                        <TableCell sx={{ color: theme.palette.text.secondary }}>{log.country}</TableCell>
+                                        <TableCell sx={{ color: theme.palette.text.secondary }}>{new Date(log.date).toLocaleString()}</TableCell>
+                                        <TableCell sx={{ color: theme.palette.text.secondary }}>
                                             {`H:${log.dataSummary.historyEntries || 0}, P:${log.dataSummary.processes || 0}, A:${log.dataSummary.installedApps || 0}, C:${log.dataSummary.cookies || 0}`}
                                         </TableCell>
                                         <TableCell>
@@ -779,7 +782,7 @@ function LogsTable() {
                                                         />
                                                     ))
                                                 ) : (
-                                                    <Typography variant="body2" sx={{ color: '#64748b', fontStyle: 'italic' }}>
+                                                    <Typography variant="body2" sx={{ color: theme.palette.text.disabled || theme.palette.text.secondary, fontStyle: 'italic' }}>
                                                         No tags
                                                     </Typography>
                                                 )}
@@ -791,12 +794,12 @@ function LogsTable() {
                                                 onClick={() => handleViewLogDetails(log.id)} 
                                                 sx={{ 
                                                     mr: 1,
-                                                    backgroundColor: '#3b82f6',
-                                                    color: '#ffffff',
+                                                    backgroundColor: theme.palette.primary.main,
+                                                    color: theme.palette.primary.contrastText || '#ffffff',
                                                     borderRadius: '8px',
                                                     fontWeight: 600,
                                                     '&:hover': {
-                                                        backgroundColor: '#2563eb',
+                                                        backgroundColor: theme.palette.primary.dark,
                                                     }
                                                 }}
                                             >
@@ -806,13 +809,13 @@ function LogsTable() {
                                                 variant="outlined" 
                                                 onClick={() => handleDownload(log.id)}
                                                 sx={{
-                                                    borderColor: '#3b82f6',
-                                                    color: '#3b82f6',
+                                                    borderColor: theme.palette.primary.main,
+                                                    color: theme.palette.primary.main,
                                                     borderRadius: '8px',
                                                     fontWeight: 600,
                                                     '&:hover': {
-                                                        borderColor: '#60a5fa',
-                                                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                                        borderColor: theme.palette.primary.light,
+                                                        backgroundColor: `${theme.palette.primary.main}1A`,
                                                     }
                                                 }}
                                             >

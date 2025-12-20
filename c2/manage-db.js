@@ -11,6 +11,7 @@
  *   node manage-db.js deactivate-user <username>
  *   node manage-db.js activate-user <username>
  *   node manage-db.js reset-password <username> <new-password>
+ *   node manage-db.js keep-only-users <username1> [username2] [username3] ...
  */
 
 require('dotenv').config();
@@ -183,6 +184,76 @@ async function activateUser(username) {
     console.log(`\n✓ User '${username}' activated successfully\n`);
 }
 
+async function keepOnlyUsers(...usernames) {
+    if (!usernames || usernames.length === 0) {
+        console.error('Error: At least one username is required');
+        console.log('Usage: node manage-db.js keep-only-users <username1> [username2] [username3] ...');
+        process.exit(1);
+    }
+    
+    const { db } = require('./database');
+    
+    // Get all users (including inactive ones)
+    const allUsers = db.prepare('SELECT id, username, is_active FROM users').all();
+    
+    // Remove duplicates from usernames to keep
+    const usernamesToKeep = [...new Set(usernames)];
+    
+    // Check which users exist (check all users, not just active ones)
+    const existingUsers = usernamesToKeep.filter(u => {
+        const user = db.prepare('SELECT * FROM users WHERE username = ?').get(u);
+        return user !== undefined;
+    });
+    
+    if (existingUsers.length === 0) {
+        console.error('Error: None of the specified usernames exist in the database');
+        process.exit(1);
+    }
+    
+    // Show what will be kept and deleted
+    console.log('\n=== Users to KEEP ===');
+    existingUsers.forEach(u => {
+        const user = db.prepare('SELECT * FROM users WHERE username = ?').get(u);
+        const status = user.is_active ? 'Active' : 'Inactive';
+        console.log(`  - ${u} (ID: ${user.id}, Status: ${status})`);
+    });
+    
+    const usersToDelete = allUsers.filter(u => !usernamesToKeep.includes(u.username));
+    
+    if (usersToDelete.length === 0) {
+        console.log('\n✓ No users to delete. All specified users already exist and no other users found.\n');
+        rl.close();
+        return;
+    }
+    
+    console.log('\n=== Users to DELETE ===');
+    usersToDelete.forEach(u => {
+        const status = u.is_active ? 'Active' : 'Inactive';
+        console.log(`  - ${u.username} (ID: ${u.id}, Status: ${status})`);
+    });
+    
+    // Warn about non-existent usernames
+    const missingUsers = usernamesToKeep.filter(u => !existingUsers.includes(u));
+    if (missingUsers.length > 0) {
+        console.log('\n⚠️  WARNING: The following usernames do not exist and will be skipped:');
+        missingUsers.forEach(u => console.log(`  - ${u}`));
+    }
+    
+    const answer = await question(`\nAre you sure you want to DELETE ${usersToDelete.length} user(s) and keep only the ${existingUsers.length} specified user(s)? (yes/no): `);
+    if (answer.toLowerCase() !== 'yes') {
+        console.log('Operation cancelled.');
+        rl.close();
+        return;
+    }
+    
+    // Delete all users except the ones to keep
+    const placeholders = usernamesToKeep.map(() => '?').join(',');
+    const result = db.prepare(`DELETE FROM users WHERE username NOT IN (${placeholders})`).run(...usernamesToKeep);
+    
+    console.log(`\n✓ Successfully deleted ${result.changes} user(s)`);
+    console.log(`✓ Kept ${existingUsers.length} user(s): ${existingUsers.join(', ')}\n`);
+}
+
 // Main command handler
 async function main() {
     const command = process.argv[2];
@@ -218,6 +289,10 @@ async function main() {
                 await activateUser(args[0]);
                 break;
                 
+            case 'keep-only-users':
+                await keepOnlyUsers(...args);
+                break;
+                
             default:
                 console.log(`
 Database Management Tool
@@ -233,6 +308,7 @@ Commands:
   delete-user <user>            Delete a user from the database
   deactivate-user <user>        Deactivate a user account
   activate-user <user>          Activate a user account
+  keep-only-users <u1> [u2] [u3] ... Delete all users except the specified usernames
 
 Password Security:
   - All passwords are hashed using bcrypt with 10 salt rounds
