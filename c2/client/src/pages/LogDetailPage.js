@@ -2095,13 +2095,11 @@ const LogDetailPage = () => {
                     renderFunction={renderCryptoWalletFolders} 
                 />
             )}
-            {pcData.importantFiles && pcData.importantFiles.length > 0 && (
-                <DataSection 
-                    title={`Important Files (${pcData.importantFiles.length})`} 
-                    data={pcData.importantFiles} 
-                    renderFunction={renderImportantFiles} 
-                />
-            )}
+            <DataSection 
+                title={`Important Files (${pcData.importantFiles?.length || 0})`} 
+                data={pcData.importantFiles || []} 
+                renderFunction={renderImportantFiles} 
+            />
             <DataSection 
                 title={`Browser History (${(() => {
                     if (!pcData.browserHistory) return 0;
