@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Box,
     Paper,
@@ -22,7 +23,7 @@ import {
     FormControl,
     InputLabel
 } from '@mui/material';
-import { Download as DownloadIcon, Build as BuildIcon, ExpandMore as ExpandMoreIcon, Image as ImageIcon, Folder as FolderIcon, Switch as SwitchIcon } from '@mui/icons-material';
+import { Download as DownloadIcon, Build as BuildIcon, ExpandMore as ExpandMoreIcon, Image as ImageIcon, Folder as FolderIcon, Switch as SwitchIcon, ShoppingCart as ShoppingCartIcon, Lock as LockIcon } from '@mui/icons-material';
 
 function PayloadBuilderPage() {
     const [selectedFeatures, setSelectedFeatures] = useState({
@@ -44,6 +45,9 @@ function PayloadBuilderPage() {
     const [userInfo, setUserInfo] = useState(null);
     const [outputName, setOutputName] = useState('');
     const [iconFile, setIconFile] = useState(null);
+    const [subscription, setSubscription] = useState(null);
+    const [loadingSubscription, setLoadingSubscription] = useState(true);
+    const navigate = useNavigate();
     const [fileMetadata, setFileMetadata] = useState({
         description: '',
         fileDescription: '',
@@ -117,6 +121,39 @@ function PayloadBuilderPage() {
                 console.error('Error parsing user info:', e);
             }
         }
+
+        // Fetch subscription status
+        const fetchSubscription = async () => {
+            try {
+                const token = localStorage.getItem('authToken');
+                if (!token) {
+                    setLoadingSubscription(false);
+                    return;
+                }
+
+                const response = await fetch('/api/subscription', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    setSubscription(data);
+                } else if (response.status === 404) {
+                    // User not found or no subscription
+                    setSubscription(null);
+                } else {
+                    console.error('Error fetching subscription:', response.status);
+                }
+            } catch (err) {
+                console.error('Error fetching subscription:', err);
+            } finally {
+                setLoadingSubscription(false);
+            }
+        };
+
+        fetchSubscription();
     }, []);
 
     const features = [
@@ -269,6 +306,16 @@ function PayloadBuilderPage() {
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({ message: 'Server error' }));
+                
+                // If subscription is required, redirect to purchase page
+                if (errorData.subscriptionRequired || response.status === 403) {
+                    setError('Active subscription required to build payloads. Redirecting to purchase page...');
+                    setTimeout(() => {
+                        navigate('/purchase');
+                    }, 2000);
+                    return;
+                }
+                
                 throw new Error(errorData.message || `Server error: ${response.status}`);
             }
 
@@ -305,6 +352,58 @@ function PayloadBuilderPage() {
     const getTotalSelected = () => {
         return Object.values(selectedFeatures).filter(Boolean).length;
     };
+
+    // Check if subscription is active
+    const isSubscriptionActive = () => {
+        if (!subscription) return false;
+        // Check if subscription has days remaining (days > 0)
+        if (subscription.days !== undefined && subscription.days !== null) {
+            return subscription.days > 0;
+        }
+        // Check if subscription has active flag
+        if (subscription.active !== undefined) {
+            return subscription.active === true;
+        }
+        // Check if subscription has expiresAt and it's in the future
+        if (subscription.expiresAt) {
+            return new Date(subscription.expiresAt) > new Date();
+        }
+        return false;
+    };
+
+    // Show subscription required message if not subscribed
+    if (loadingSubscription) {
+        return (
+            <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+                <Typography>Loading subscription status...</Typography>
+            </Box>
+        );
+    }
+
+    if (!isSubscriptionActive()) {
+        return (
+            <Box sx={{ p: 3 }}>
+                <Paper sx={{ p: 4, textAlign: 'center', maxWidth: 600, mx: 'auto', mt: 4 }}>
+                    <LockIcon sx={{ fontSize: 64, color: 'error.main', mb: 2 }} />
+                    <Typography variant="h4" gutterBottom>
+                        Subscription Required
+                    </Typography>
+                    <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+                        You need an active subscription to use the Payload Builder. Subscribe now to create custom payloads and start collecting data.
+                    </Typography>
+                    <Button
+                        variant="contained"
+                        size="large"
+                        startIcon={<ShoppingCartIcon />}
+                        onClick={() => navigate('/purchase')}
+                        sx={{ mt: 2 }}
+                    >
+                        Purchase Subscription
+                    </Button>
+                </Paper>
+            </Box>
+        );
+    }
 
     return (
         <Box sx={{ p: 3 }}>

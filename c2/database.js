@@ -194,6 +194,24 @@ const initDatabase = () => {
         )
     `);
 
+    // Check if subscription columns exist, add them if not
+    try {
+        const columns = db.prepare("PRAGMA table_info(users)").all();
+        const columnNames = columns.map(col => col.name);
+        
+        if (!columnNames.includes('subscription_days')) {
+            db.exec('ALTER TABLE users ADD COLUMN subscription_days INTEGER DEFAULT 0');
+        }
+        if (!columnNames.includes('subscription_type')) {
+            db.exec('ALTER TABLE users ADD COLUMN subscription_type TEXT DEFAULT NULL');
+        }
+        if (!columnNames.includes('subscription_started_at')) {
+            db.exec('ALTER TABLE users ADD COLUMN subscription_started_at DATETIME DEFAULT NULL');
+        }
+    } catch (e) {
+        console.error('Error checking/adding subscription columns:', e);
+    }
+
     // Login attempts table (for tracking login history)
     db.exec(`
         CREATE TABLE IF NOT EXISTS login_attempts (
@@ -351,6 +369,120 @@ const userDb = {
     
     getAll: () => {
         return db.prepare('SELECT id, username, created_at, last_login, is_active FROM users').all();
+    },
+
+    getSubscription: (username) => {
+        const user = db.prepare('SELECT subscription_days, subscription_type, subscription_started_at FROM users WHERE username = ?').get(username);
+        if (!user) {
+            return null;
+        }
+        
+        const days = user.subscription_days || 0;
+        const startedAt = user.subscription_started_at;
+        
+        // Calculate expiration date if subscription started
+        let expiresAt = null;
+        if (startedAt && days > 0) {
+            const startDate = new Date(startedAt);
+            expiresAt = new Date(startDate.getTime() + (days * 24 * 60 * 60 * 1000));
+        }
+        
+        return {
+            days: days,
+            type: user.subscription_type || null,
+            startedAt: startedAt,
+            expiresAt: expiresAt ? expiresAt.toISOString() : null,
+            active: days > 0 && (!expiresAt || expiresAt > new Date())
+        };
+    },
+
+    setSubscription: (username, days, type = 'standard') => {
+        try {
+            const now = new Date().toISOString();
+            const result = db.prepare(`
+                UPDATE users 
+                SET subscription_days = ?, 
+                    subscription_type = ?,
+                    subscription_started_at = CASE 
+                        WHEN subscription_days = 0 OR subscription_days IS NULL THEN ? 
+                        ELSE subscription_started_at 
+                    END
+                WHERE username = ?
+            `).run(days, type, now, username);
+            return result.changes > 0;
+        } catch (error) {
+            console.error('Error setting subscription:', error);
+            return false;
+        }
+    },
+
+    addSubscriptionDays: (username, days) => {
+        try {
+            const user = db.prepare('SELECT subscription_days, subscription_started_at FROM users WHERE username = ?').get(username);
+            if (!user) {
+                return false;
+            }
+            
+            const currentDays = user.subscription_days || 0;
+            const newDays = currentDays + days;
+            const now = new Date().toISOString();
+            
+            // If user had no subscription, set start date to now
+            const startedAt = (currentDays === 0 || !user.subscription_started_at) ? now : user.subscription_started_at;
+            
+            const result = db.prepare(`
+                UPDATE users 
+                SET subscription_days = ?,
+                    subscription_started_at = ?
+                WHERE username = ?
+            `).run(newDays, startedAt, username);
+            
+            return result.changes > 0;
+        } catch (error) {
+            console.error('Error adding subscription days:', error);
+            return false;
+        }
+    },
+
+    removeSubscription: (username) => {
+        try {
+            const result = db.prepare(`
+                UPDATE users 
+                SET subscription_days = 0,
+                    subscription_type = NULL,
+                    subscription_started_at = NULL
+                WHERE username = ?
+            `).run(username);
+            return result.changes > 0;
+        } catch (error) {
+            console.error('Error removing subscription:', error);
+            return false;
+        }
+    },
+
+    hasActiveSubscription: (username) => {
+        const subscription = this.getSubscription(username);
+        if (!subscription) {
+            return false;
+        }
+        
+        // Check if subscription has days remaining
+        if (subscription.days > 0) {
+            // If expiresAt exists, check if it's in the future
+            if (subscription.expiresAt) {
+                return new Date(subscription.expiresAt) > new Date();
+            }
+            // If no expiration date but has days, check if days haven't expired based on start date
+            if (subscription.startedAt) {
+                const startDate = new Date(subscription.startedAt);
+                const expiresAt = new Date(startDate.getTime() + (subscription.days * 24 * 60 * 60 * 1000));
+                return expiresAt > new Date();
+            }
+            // If we have days but no start date, assume it's active (backward compatibility)
+            return true;
+        }
+        
+        return false;
     }
 };
 
