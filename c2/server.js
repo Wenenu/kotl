@@ -1369,7 +1369,7 @@ app.post('/api/payloads/generate', authenticateToken, (req, res) => {
                 outputName = req.body.outputName;
             }
             
-            // Parse file metadata from form data
+            // Parse file metadata from form
             const fileMetadata = {
                 description: req.body.description || '',
                 fileDescription: req.body.fileDescription || '',
