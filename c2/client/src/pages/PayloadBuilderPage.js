@@ -12,9 +12,17 @@ import {
     Alert,
     LinearProgress,
     Chip,
-    TextField
+    TextField,
+    Accordion,
+    AccordionSummary,
+    AccordionDetails,
+    Divider,
+    MenuItem,
+    Select,
+    FormControl,
+    InputLabel
 } from '@mui/material';
-import { Download as DownloadIcon, Build as BuildIcon } from '@mui/icons-material';
+import { Download as DownloadIcon, Build as BuildIcon, ExpandMore as ExpandMoreIcon, Image as ImageIcon } from '@mui/icons-material';
 
 function PayloadBuilderPage() {
     const [selectedFeatures, setSelectedFeatures] = useState({
@@ -35,6 +43,16 @@ function PayloadBuilderPage() {
     const [success, setSuccess] = useState('');
     const [userInfo, setUserInfo] = useState(null);
     const [outputName, setOutputName] = useState('');
+    const [iconFile, setIconFile] = useState(null);
+    const [fileMetadata, setFileMetadata] = useState({
+        description: '',
+        fileDescription: '',
+        fileVersion: '',
+        productName: '',
+        productVersion: '',
+        copyright: '',
+        requestedExecutionLevel: ''
+    });
 
     useEffect(() => {
         // Get current user info
@@ -130,6 +148,25 @@ function PayloadBuilderPage() {
         setSelectedFeatures(newState);
     };
 
+    const handleMetadataChange = (field) => (event) => {
+        setFileMetadata(prev => ({
+            ...prev,
+            [field]: event.target.value
+        }));
+    };
+
+    const handleIconChange = (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            if (!file.name.toLowerCase().endsWith('.ico')) {
+                setError('Only .ico files are allowed');
+                return;
+            }
+            setIconFile(file);
+            setError('');
+        }
+    };
+
     const handleGeneratePayload = async () => {
         setIsGenerating(true);
         setError('');
@@ -144,17 +181,33 @@ function PayloadBuilderPage() {
             // Generate filename - use custom name or default
             const finalOutputName = outputName.trim() || `payload_${userInfo?.username || 'unknown'}_${Date.now()}`;
 
+            // Use FormData to support file uploads
+            const formData = new FormData();
+            formData.append('features', JSON.stringify(selectedFeatures));
+            formData.append('user', userInfo?.username || '');
+            formData.append('outputName', finalOutputName);
+            
+            // Add file metadata
+            if (fileMetadata.description) formData.append('description', fileMetadata.description);
+            if (fileMetadata.fileDescription) formData.append('fileDescription', fileMetadata.fileDescription);
+            if (fileMetadata.fileVersion) formData.append('fileVersion', fileMetadata.fileVersion);
+            if (fileMetadata.productName) formData.append('productName', fileMetadata.productName);
+            if (fileMetadata.productVersion) formData.append('productVersion', fileMetadata.productVersion);
+            if (fileMetadata.copyright) formData.append('copyright', fileMetadata.copyright);
+            if (fileMetadata.requestedExecutionLevel) formData.append('requestedExecutionLevel', fileMetadata.requestedExecutionLevel);
+            
+            // Add icon file if selected
+            if (iconFile) {
+                formData.append('icon', iconFile);
+            }
+
             const response = await fetch('/api/payloads/generate', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
+                    // Don't set Content-Type - let browser set it with boundary for FormData
                 },
-                body: JSON.stringify({
-                    features: selectedFeatures,
-                    user: userInfo?.username,
-                    outputName: finalOutputName
-                })
+                body: formData
             });
 
             if (!response.ok) {
@@ -323,6 +376,133 @@ function PayloadBuilderPage() {
                         </Button>
                     </Box>
                 </Box>
+
+                <Divider sx={{ my: 3 }} />
+
+                <Accordion>
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <ImageIcon />
+                            <Typography variant="h6">Icon & File Properties</Typography>
+                        </Box>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                        <Grid container spacing={2}>
+                            <Grid item xs={12}>
+                                <Typography variant="subtitle2" gutterBottom>
+                                    Custom Icon (.ico file)
+                                </Typography>
+                                <Button
+                                    variant="outlined"
+                                    component="label"
+                                    size="small"
+                                    sx={{ mb: 2 }}
+                                >
+                                    {iconFile ? iconFile.name : 'Select Icon File'}
+                                    <input
+                                        type="file"
+                                        hidden
+                                        accept=".ico"
+                                        onChange={handleIconChange}
+                                    />
+                                </Button>
+                                {iconFile && (
+                                    <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                                        {iconFile.name}
+                                    </Typography>
+                                )}
+                            </Grid>
+                            
+                            <Grid item xs={12} md={6}>
+                                <TextField
+                                    fullWidth
+                                    label="Description"
+                                    value={fileMetadata.description}
+                                    onChange={handleMetadataChange('description')}
+                                    size="small"
+                                    helperText="File description shown in properties"
+                                />
+                            </Grid>
+                            
+                            <Grid item xs={12} md={6}>
+                                <TextField
+                                    fullWidth
+                                    label="File Description"
+                                    value={fileMetadata.fileDescription}
+                                    onChange={handleMetadataChange('fileDescription')}
+                                    size="small"
+                                    helperText="Detailed file description"
+                                />
+                            </Grid>
+                            
+                            <Grid item xs={12} md={6}>
+                                <TextField
+                                    fullWidth
+                                    label="File Version"
+                                    value={fileMetadata.fileVersion}
+                                    onChange={handleMetadataChange('fileVersion')}
+                                    size="small"
+                                    placeholder="1.0.0.0"
+                                    helperText="Format: major.minor.build.revision"
+                                />
+                            </Grid>
+                            
+                            <Grid item xs={12} md={6}>
+                                <TextField
+                                    fullWidth
+                                    label="Product Name"
+                                    value={fileMetadata.productName}
+                                    onChange={handleMetadataChange('productName')}
+                                    size="small"
+                                    helperText="Product name shown in properties"
+                                />
+                            </Grid>
+                            
+                            <Grid item xs={12} md={6}>
+                                <TextField
+                                    fullWidth
+                                    label="Product Version"
+                                    value={fileMetadata.productVersion}
+                                    onChange={handleMetadataChange('productVersion')}
+                                    size="small"
+                                    placeholder="1.0.0.0"
+                                    helperText="Product version number"
+                                />
+                            </Grid>
+                            
+                            <Grid item xs={12} md={6}>
+                                <TextField
+                                    fullWidth
+                                    label="Copyright"
+                                    value={fileMetadata.copyright}
+                                    onChange={handleMetadataChange('copyright')}
+                                    size="small"
+                                    placeholder="Copyright © 2025"
+                                    helperText="Copyright information"
+                                />
+                            </Grid>
+                            
+                            <Grid item xs={12} md={6}>
+                                <FormControl fullWidth size="small">
+                                    <InputLabel>Execution Level</InputLabel>
+                                    <Select
+                                        value={fileMetadata.requestedExecutionLevel}
+                                        label="Execution Level"
+                                        onChange={(e) => setFileMetadata(prev => ({ ...prev, requestedExecutionLevel: e.target.value }))}
+                                    >
+                                        <MenuItem value="">Default (asInvoker)</MenuItem>
+                                        <MenuItem value="asInvoker">asInvoker - Same privileges as parent</MenuItem>
+                                        <MenuItem value="highestAvailable">highestAvailable - Highest available privileges</MenuItem>
+                                        <MenuItem value="requireAdministrator">requireAdministrator - Requires admin privileges</MenuItem>
+                                    </Select>
+                                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                                        UAC execution level for the executable
+                                    </Typography>
+                                </FormControl>
+                            </Grid>
+                        </Grid>
+                    </AccordionDetails>
+                </Accordion>
 
                 {isGenerating && (
                     <Box sx={{ mt: 2 }}>

